@@ -290,7 +290,6 @@ export function PlayScreen() {
         <button className="ghost small" onClick={() => dispatch({ type: 'go', screen: 'home' })} aria-label="やめる">
           ✕
         </button>
-        <OutsDots outs={sc.outs} />
         <span className="hud-item">
           <R>{INTRO.runner}</R>
         </span>
@@ -323,6 +322,7 @@ export function PlayScreen() {
             pulse={inWindow || bInWindow}
             batterPulse={bInWindow}
             call={callAt(tl, t)}
+            outs={sc.outs}
             arms={hideTraits ? 'hidden' : sc.outfieldArm}
             speeds={hideTraits ? 'hidden' : { runner: sc.runnerSpeed, batter: sc.batterSpeed ?? 'normal' }}
           />

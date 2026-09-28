@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import { FIELD } from '../../sim/constants';
 import { BASES, COACH_POSITION, fenceDistance, dirFromAngle } from '../../sim/field';
-import type { Arm, FielderId, Frame, OutfielderId, RunnerSpeed, Vec } from '../../sim/types';
+import type { Arm, FielderId, Frame, OutCount, OutfielderId, RunnerSpeed, Vec } from '../../sim/types';
 import type { Call } from '../playback';
 
 const NUMBERS: Record<FielderId, string> = {
@@ -171,7 +171,32 @@ function SpeedLabel({ p, speed }: { p: Vec; speed: RunnerSpeed | 'hidden' }) {
   );
 }
 
+/** アウトカウント：一塁コーチャーズボックスのあたり（三塁コーチャーから見て左右対称の位置） */
+function OutsBoard({ outs }: { outs: OutCount }) {
+  return (
+    <g transform={`translate(${-COACH_POSITION.x},${-COACH_POSITION.y + 1})`} aria-label={`${outs}アウト`}>
+      <rect x={-7.5} y={-3.2} width={15} height={6.4} rx={3.2} fill="#0f172a" opacity={0.85} />
+      <text x={-3.6} y={1.05} textAnchor="middle" fontSize={2.9} fontWeight={900} fill="#fff">
+        OUT
+      </text>
+      {[0, 1].map((i) => (
+        <circle
+          key={i}
+          cx={1.9 + i * 3.6}
+          cy={0}
+          r={1.35}
+          fill={i < outs ? '#ef4444' : 'none'}
+          stroke="#ef4444"
+          strokeWidth={0.5}
+        />
+      ))}
+    </g>
+  );
+}
+
 export type FieldProps = {
+  /** アウトカウント（グラウンドの一塁側に表示） */
+  outs?: OutCount;
   frame: Frame;
   /** 外野手の肩（'hidden' なら「？」） */
   arms?: Record<OutfielderId, Arm> | 'hidden';
@@ -191,7 +216,7 @@ export type FieldProps = {
 
 export const FULL_VIEW = { x0: -54, x1: 54, y0: -9, y1: 82 };
 
-export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, speeds, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
+export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, speeds, outs, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
   const f = frame.fielders;
   const ball = frame.ball;
   const lift = ball.h * 0.45;
@@ -205,6 +230,7 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
         aria-label="グラウンド"
       >
         <Ground />
+        {outs !== undefined && <OutsBoard outs={outs} />}
         {trail && trail.length > 1 && (
           <polyline
             points={trail.map(P).join(' ')}

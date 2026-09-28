@@ -53,6 +53,8 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
         coach={signalAt(tl, t)}
         call={callAt(tl, t)}
         arms={tl.scenario.outfieldArm}
+        outs={tl.scenario.outs}
+        speeds={{ runner: tl.scenario.runnerSpeed, batter: tl.scenario.batterSpeed ?? 'normal' }}
         className="replay-field"
       />
       <div className="row">
