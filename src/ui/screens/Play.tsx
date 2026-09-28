@@ -15,9 +15,7 @@ import { OutsDots } from '../components/OutsDots';
 import { R } from '../components/Ruby';
 import { callAt, signalAt, trailAt } from '../playback';
 import { useApp } from '../state';
-import { say } from '../voice';
-
-const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
+import { playVoice } from '../voice';
 
 type Phase = 'intro' | 'run' | 'hint' | 'done';
 
@@ -62,7 +60,7 @@ export function PlayScreen() {
       switch (e.kind) {
         case 'contact':
           sfx.bat();
-          say(pick(VOICE.contact), { pitch: 1.1, rate: 1.3 });
+          playVoice('contact', VOICE.contact[0]);
           break;
         case 'catch':
         case 'relayCatch':
@@ -75,7 +73,8 @@ export function PlayScreen() {
           vibrate([20, 40, 20]);
           break;
         case 'autoStop':
-          say(e.detail === 'batter' ? VOICE.bstop[0] : VOICE.stop[1], { rate: 1.3 });
+          if (e.detail === 'batter') playVoice('bstop', VOICE.bstop[0]);
+          else playVoice('autostop', VOICE.stop[1]);
           break;
         case 'cutToThird':
           sfx.glove();
@@ -83,11 +82,11 @@ export function PlayScreen() {
         case 'batterCall':
           // 三塁のタッチプレー
           if (e.detail === 'third') {
-            say(VOICE.safe, { pitch: 1.3, rate: 1.1 });
+            playVoice('safe', VOICE.safe);
             sfx.safe();
             sfx.cheer();
           } else {
-            say(VOICE.out, { pitch: 0.8, rate: 1.0 });
+            playVoice('out', VOICE.out);
             sfx.out();
             sfx.groan();
           }
@@ -96,11 +95,11 @@ export function PlayScreen() {
         case 'call':
           // 審判のコール：クロスプレーの瞬間に「セーフ！」「アウト！」
           if (cur.result === 'safe') {
-            say(VOICE.safe, { pitch: 1.3, rate: 1.1 });
+            playVoice('safe', VOICE.safe);
             sfx.safe();
             sfx.cheer();
           } else if (cur.result !== 'stop') {
-            say(VOICE.out, { pitch: 0.8, rate: 1.0 });
+            playVoice('out', VOICE.out);
             sfx.out();
             sfx.groan();
           }
@@ -200,7 +199,7 @@ export function PlayScreen() {
       });
       if (great) {
         sfx.fanfare();
-        say(pick(VOICE.nice), { pitch: 1.2, rate: 1.1, interrupt: false });
+        playVoice('nice', VOICE.nice[0]);
       }
       dispatch({
         type: 'recordPlay',
@@ -226,7 +225,7 @@ export function PlayScreen() {
     sfx.signal();
     // コーチャーの声：押した瞬間に出す
     const lines = { send: VOICE.send, stop: VOICE.stop, slide: VOICE.slide, bsend: VOICE.bsend, bstop: VOICE.bstop }[kind];
-    say(pick(lines), { pitch: 1.25, rate: 1.35 });
+    playVoice(kind, lines[0]);
     vibrate(kind === 'slide' ? 20 : 40);
     if (phase === 'hint') setPhase('run');
   };

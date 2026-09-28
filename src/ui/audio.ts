@@ -1,6 +1,6 @@
 import { unlockVoice } from './voice';
 
-// 効果音は Web Audio API で合成する（外部の音源ファイルは使わない）。
+// 効果音は Web Audio API で合成する。声（public/voice/*.m4a）の再生にも同じ AudioContext を使う。
 
 let ctx: AudioContext | null = null;
 let enabled = true;
@@ -11,6 +11,11 @@ export function setSoundEnabled(on: boolean) {
 
 function ac(): AudioContext | null {
   if (!enabled) return null;
+  return audioContext();
+}
+
+/** 効果音の ON/OFF に関係なく AudioContext を返す（声の再生にも使う） */
+export function audioContext(): AudioContext | null {
   try {
     if (!ctx) {
       const C = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -26,7 +31,7 @@ function ac(): AudioContext | null {
 
 /** ユーザー操作のタイミングで呼ぶ（iOS は操作中でないと音が出ない） */
 export function unlockAudio() {
-  ac();
+  audioContext();
   unlockVoice();
 }
 
