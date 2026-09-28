@@ -573,6 +573,20 @@ input[type='checkbox'] {
   overflow: auto;
   margin: 0;
 }
+/* スタート前：外野手の肩が見えるように、カードは下に寄せて背景は薄く */
+.overlay.intro {
+  align-items: end;
+  background: rgb(0 0 0 / 0.15);
+  backdrop-filter: none;
+}
+.overlay.intro .card {
+  max-height: 60%;
+  padding: 8px 14px;
+  line-height: 1.5;
+}
+.overlay.intro .tap {
+  margin: 4px 0 0;
+}
 .overlay.hint .card {
   border: 3px solid var(--accent);
 }

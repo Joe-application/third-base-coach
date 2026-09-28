@@ -18,6 +18,7 @@ import {
   type Settings,
 } from '../game/storage';
 import { setSoundEnabled, setVibrateEnabled } from './audio';
+import { setVoiceEnabled } from './voice';
 
 export type Mode = 'tutorial' | 'challenge' | 'compare' | 'anohi' | 'free';
 
@@ -137,6 +138,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveSettings(state.settings);
     setSoundEnabled(state.settings.sound);
     setVibrateEnabled(state.settings.vibrate);
+    setVoiceEnabled(state.settings.voice);
   }, [state.settings]);
 
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>;

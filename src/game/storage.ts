@@ -76,6 +76,8 @@ export type Settings = {
   /** auto = ランクに合わせる */
   speed: 'auto' | 'slow' | 'normal';
   sound: boolean;
+  /** 声（「回れー！」など） */
+  voice: boolean;
   vibrate: boolean;
   /** 回すべき P_safe の基準（コーチ向け） */
   thresholds: Record<OutCount, number>;
@@ -86,6 +88,7 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   speed: 'auto',
   sound: true,
+  voice: true,
   vibrate: true,
   thresholds: { ...EVAL.thresholds },
   situational: false,
@@ -264,6 +267,7 @@ export function loadSettings(): Settings {
   return {
     speed: o.speed === 'slow' || o.speed === 'normal' ? o.speed : 'auto',
     sound: bool(o.sound, DEFAULT_SETTINGS.sound),
+    voice: bool(o.voice, DEFAULT_SETTINGS.voice),
     vibrate: bool(o.vibrate, DEFAULT_SETTINGS.vibrate),
     thresholds: {
       0: clamp(num(th[0], EVAL.thresholds[0])),

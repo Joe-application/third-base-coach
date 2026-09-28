@@ -51,6 +51,18 @@ export function SettingsScreen() {
         </div>
 
         <label>
+          <R>{'{声|こえ}'}</R>
+        </label>
+        <div className="seg-ctl">
+          <button className={s.voice ? 'on' : ''} onClick={() => set({ voice: true })}>
+            ON
+          </button>
+          <button className={!s.voice ? 'on' : ''} onClick={() => set({ voice: false })}>
+            OFF
+          </button>
+        </div>
+
+        <label>
           <R>{'{振動|しんどう}'}</R>
         </label>
         <div className="seg-ctl">

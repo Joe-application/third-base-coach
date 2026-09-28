@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import { FIELD } from '../../sim/constants';
 import { BASES, COACH_POSITION, fenceDistance, dirFromAngle } from '../../sim/field';
-import type { FielderId, Frame, PlayResult, Vec } from '../../sim/types';
+import type { Arm, FielderId, Frame, OutfielderId, PlayResult, Vec } from '../../sim/types';
 import { R } from './Ruby';
 
 const NUMBERS: Record<FielderId, string> = {
@@ -129,8 +129,28 @@ function Coach({ signal, pulse }: { signal: 'send' | 'stop' | null; pulse: boole
   );
 }
 
+/** 外野手の肩のラベル（ひらがな：SVG ではふりがなを付けられないため） */
+const ARM_TEXT: Record<Arm, string> = { strong: 'かた つよい', normal: 'かた ふつう', weak: 'かた よわい' };
+const ARM_COLOR: Record<Arm, string> = { strong: '#fecaca', normal: '#f1f5f9', weak: '#bbf7d0' };
+
+function ArmLabel({ p, arm }: { p: Vec; arm: Arm | 'hidden' }) {
+  const text = arm === 'hidden' ? 'かた ？' : ARM_TEXT[arm];
+  const color = arm === 'hidden' ? '#f1f5f9' : ARM_COLOR[arm];
+  const w = text.length * 2.55 + 1.8;
+  return (
+    <g transform={`translate(${p.x.toFixed(2)},${(-p.y + 4.3).toFixed(2)})`}>
+      <rect x={-w / 2} y={-1.9} width={w} height={3.8} rx={1.9} fill="#0f172a" opacity={0.8} />
+      <text y={0.95} textAnchor="middle" fontSize={2.7} fontWeight={800} fill={color}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
 export type FieldProps = {
   frame: Frame;
+  /** 外野手の肩（'hidden' なら「？」） */
+  arms?: Record<OutfielderId, Arm> | 'hidden';
   trail?: Vec[];
   coach?: 'send' | 'stop' | null;
   pulse?: boolean;
@@ -142,7 +162,7 @@ export type FieldProps = {
 
 export const FULL_VIEW = { x0: -54, x1: 54, y0: -9, y1: 82 };
 
-export function Field({ frame, trail, coach = null, pulse = false, call = null, view = FULL_VIEW, className }: FieldProps) {
+export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, view = FULL_VIEW, className }: FieldProps) {
   const f = frame.fielders;
   const ball = frame.ball;
   const lift = ball.h * 0.45;
@@ -169,6 +189,10 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
         {(Object.keys(f) as FielderId[]).map((id) => (
           <Player key={id} p={f[id]} label={NUMBERS[id]} fill="var(--defense)" />
         ))}
+        {arms &&
+          (['LF', 'CF', 'RF'] as OutfielderId[]).map((id) => (
+            <ArmLabel key={id} p={f[id]} arm={arms === 'hidden' ? 'hidden' : arms[id]} />
+          ))}
         <Player p={frame.batter} label="打" fill="var(--offense-2)" r={1.5} />
         <Player p={frame.runner} label="走" fill="var(--offense)" r={1.8} />
         <Coach signal={coach} pulse={pulse} />

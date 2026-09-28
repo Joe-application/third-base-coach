@@ -1,3 +1,5 @@
+import { unlockVoice } from './voice';
+
 // 効果音は Web Audio API で合成する（外部の音源ファイルは使わない）。
 
 let ctx: AudioContext | null = null;
@@ -25,6 +27,7 @@ function ac(): AudioContext | null {
 /** ユーザー操作のタイミングで呼ぶ（iOS は操作中でないと音が出ない） */
 export function unlockAudio() {
   ac();
+  unlockVoice();
 }
 
 function noise(c: AudioContext, dur: number, gain: number, freq: number, q = 1, at = c.currentTime) {
@@ -42,6 +45,30 @@ function noise(c: AudioContext, dur: number, gain: number, freq: number, q = 1, 
   g.gain.value = gain;
   src.connect(f).connect(g).connect(c.destination);
   src.start(at);
+}
+
+/** ふくらんでからしぼむノイズ（歓声っぽい音） */
+function swell(c: AudioContext, dur: number, gain: number, freq: number, q: number) {
+  const len = Math.floor(c.sampleRate * dur);
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const k = i / len;
+    const env = Math.min(1, k / 0.15) * Math.pow(1 - k, 1.5);
+    // ゆらぎを入れて人の声の集まりっぽくする
+    const wobble = 0.7 + 0.3 * Math.sin(i / 900) * Math.sin(i / 2300);
+    d[i] = (Math.random() * 2 - 1) * env * wobble;
+  }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = freq;
+  f.Q.value = q;
+  const g = c.createGain();
+  g.gain.value = gain;
+  src.connect(f).connect(g).connect(c.destination);
+  src.start();
 }
 
 function tone(c: AudioContext, freq: number, dur: number, gain: number, type: OscillatorType = 'sine', at = c.currentTime, slideTo?: number) {
@@ -94,6 +121,19 @@ export const sfx = {
     if (!c) return;
     const t = c.currentTime;
     [523, 659, 784, 1047].forEach((f, i) => tone(c, f, i === 3 ? 0.5 : 0.14, 0.18, 'triangle', t + i * 0.12));
+  },
+  /** 観客の歓声（セーフのとき） */
+  cheer() {
+    const c = ac();
+    if (!c) return;
+    swell(c, 1.8, 0.5, 1200, 0.35);
+    swell(c, 1.6, 0.35, 2600, 0.5);
+  },
+  /** 観客の「あ〜」（アウトのとき） */
+  groan() {
+    const c = ac();
+    if (!c) return;
+    swell(c, 1.2, 0.35, 420, 0.3);
   },
   soft() {
     const c = ac();

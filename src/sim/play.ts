@@ -212,6 +212,12 @@ function buildEvents(
     const tStopped = r.retreat?.tBack ?? (r.tThird ?? 0) + 0.8;
     ev.push({ t: tStopped, kind: 'runnerStopped' });
   }
+  // 審判のコール：本塁（または三塁）で決着がつく瞬間
+  let tCall: number;
+  if (r.tHome !== null) tCall = r.tHome + 0.15;
+  else if (tp) tCall = Math.max(tp.tBack, tp.tBallReady) + 0.1;
+  else tCall = r.retreat?.tBack ?? (r.tThird ?? 0) + 0.8;
+  ev.push({ t: tCall, kind: 'call', detail: result });
   return ev.sort((a, b) => a.t - b.t);
 }
 

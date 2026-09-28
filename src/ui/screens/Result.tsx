@@ -70,15 +70,23 @@ export function ResultScreen() {
 
           <div className="score-box">
             <div>
-              <R>{'{判断|はんだん}'}</R> <b>+{score.grade.points}</b>
+              <span>
+                <R>{'{判断|はんだん}'}</R>
+              </span>
+              <b>+{score.grade.points}</b>
             </div>
             <div>
-              <R>{TIMING_LABEL[score.timing]}</R>{' '}
+              <span>
+                <R>{TIMING_LABEL[score.timing]}</R>
+              </span>
               <b>{score.timingPoints >= 0 ? `+${score.timingPoints}` : score.timingPoints}</b>
             </div>
             {score.resultPoints > 0 && (
               <div>
-                <R>{'{生還|せいかん}'}</R> <b>+{score.resultPoints}</b>
+                <span>
+                  <R>{'{生還|せいかん}'}</R>
+                </span>
+                <b>+{score.resultPoints}</b>
               </div>
             )}
             {score.slidePoints > 0 && (
@@ -88,7 +96,10 @@ export function ResultScreen() {
             )}
             {rec.multiplier > 1 && (
               <div className="combo-line">
-                <R>{COMBO_TEXT(rec.combo)}</R> <b>×{rec.multiplier}</b>
+                <span>
+                  <R>{COMBO_TEXT(rec.combo)}</R>
+                </span>
+                <b>×{rec.multiplier}</b>
               </div>
             )}
             <div className="score-total">

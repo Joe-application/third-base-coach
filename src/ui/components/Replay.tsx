@@ -36,7 +36,8 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
     setPlaying(true);
   };
 
-  const showCall = t >= tl.duration - 0.8;
+  const tCall = tl.events.find((e) => e.kind === 'call')?.t ?? tl.duration - 0.8;
+  const showCall = t >= tCall;
   return (
     <div className="replay">
       <div className="replay-head">
@@ -53,6 +54,7 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
         trail={trailAt(tl, t)}
         coach={signalAt(tl, t)}
         call={showCall ? tl.result : null}
+        arms={tl.scenario.outfieldArm}
         className="replay-field"
       />
       <div className="row">

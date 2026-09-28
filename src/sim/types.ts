@@ -64,6 +64,8 @@ export type EventKind =
   | 'ballHome'
   | 'runnerHome'
   | 'runnerStopped'
+  /** 審判のコール（セーフ／アウト／ストップ） */
+  | 'call'
   | 'throwThird'
   | 'result';
 

@@ -6,7 +6,7 @@ import { G_HOME, G_THIRD } from '../../sim/field';
 import { frameAt, simulatePlay } from '../../sim/play';
 import { runnerGAt } from '../../sim/runner';
 import type { Command, CommandKind, PlayResult } from '../../sim/types';
-import { ANOHI_STORY, BUTTONS, HINT, INTRO, LABEL } from '../../game/messages';
+import { ANOHI_STORY, BUTTONS, HINT, INTRO, LABEL, VOICE } from '../../game/messages';
 import { applyPlay, comboMultiplier } from '../../game/progression';
 import { appendHistory } from '../../game/storage';
 import { sfx, unlockAudio, vibrate } from '../audio';
@@ -15,6 +15,9 @@ import { OutsDots } from '../components/OutsDots';
 import { R } from '../components/Ruby';
 import { signalAt, trailAt } from '../playback';
 import { useApp } from '../state';
+import { say } from '../voice';
+
+const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
 
 type Phase = 'intro' | 'run' | 'hint' | 'done';
 
@@ -51,10 +54,12 @@ export function PlayScreen() {
   const fireEvents = useCallback((prev: number, now: number) => {
     const cur = tlRef.current;
     for (const e of cur.events) {
-      if (e.t <= prev || e.t > now) continue;
+      // 0秒ちょうどのイベント（打球音）も鳴らす
+      if ((e.t <= prev && !(prev === 0 && e.t === 0)) || e.t > now) continue;
       switch (e.kind) {
         case 'contact':
           sfx.bat();
+          say(pick(VOICE.contact), { pitch: 1.1, rate: 1.3 });
           break;
         case 'catch':
         case 'relayCatch':
@@ -66,10 +71,21 @@ export function PlayScreen() {
         case 'hesitate':
           vibrate([20, 40, 20]);
           break;
-        case 'result':
+        case 'autoStop':
+          say(VOICE.stop[1], { rate: 1.3 });
+          break;
+        case 'call':
+          // 審判のコール：クロスプレーの瞬間に「セーフ！」「アウト！」
           setCall(cur.result);
-          if (cur.result === 'safe') sfx.safe();
-          else if (cur.result !== 'stop') sfx.out();
+          if (cur.result === 'safe') {
+            say(VOICE.safe, { pitch: 1.3, rate: 1.1 });
+            sfx.safe();
+            sfx.cheer();
+          } else if (cur.result !== 'stop') {
+            say(VOICE.out, { pitch: 0.8, rate: 1.0 });
+            sfx.out();
+            sfx.groan();
+          }
           if (cur.crossPlay || cur.thirdPlay) vibrate(120);
           break;
       }
@@ -141,7 +157,10 @@ export function PlayScreen() {
         score: points,
         playedAt: Date.now(),
       });
-      if (great) sfx.fanfare();
+      if (great) {
+        sfx.fanfare();
+        say(pick(VOICE.nice), { pitch: 1.2, rate: 1.1, interrupt: false });
+      }
       dispatch({
         type: 'recordPlay',
         profile: updated,
@@ -163,6 +182,8 @@ export function PlayScreen() {
     tlRef.current = next;
     setTl(next);
     sfx.signal();
+    // コーチャーの声：押した瞬間に出す
+    say(pick(kind === 'send' ? VOICE.send : kind === 'stop' ? VOICE.stop : VOICE.slide), { pitch: 1.25, rate: 1.35 });
     vibrate(kind === 'slide' ? 20 : 40);
     if (phase === 'hint') setPhase('run');
   };
@@ -212,9 +233,6 @@ export function PlayScreen() {
         <span className="hud-item">
           <R>{`{足|あし}:${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}`}</R>
         </span>
-        <span className="hud-item hide-narrow">
-          <R>{`{肩|かた} L:${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.LF]} C:${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.CF]} R:${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.RF]}`}</R>
-        </span>
         {session.items.length > 1 && (
           <span className="hud-item muted">
             {session.index + 1}/{session.items.length}
@@ -237,7 +255,14 @@ export function PlayScreen() {
         </button>
 
         <div className="play-field">
-          <Field frame={frame} trail={trailAt(tl, t)} coach={signal} pulse={inWindow} call={call} />
+          <Field
+            frame={frame}
+            trail={trailAt(tl, t)}
+            coach={signal}
+            pulse={inWindow}
+            call={call}
+            arms={hideTraits ? 'hidden' : sc.outfieldArm}
+          />
           {canSlide && (
             <button
               className="slide-btn"
@@ -280,40 +305,38 @@ export function PlayScreen() {
             <div className="intro-outs">
               <OutsDots outs={sc.outs} big />
               <strong>{LABEL.outs(sc.outs)}</strong>
-            </div>
-            <div>
-              <R>{INTRO.runner}</R>
-              {sc.inning !== undefined && (
-                <>
-                  {' ・ '}
-                  <R>{INTRO.inning(sc.inning)}</R>
-                </>
-              )}
-              {sc.scoreDiff !== undefined && (
-                <>
-                  {' ・ '}
-                  <R>{INTRO.score(sc.scoreDiff)}</R>
-                </>
-              )}
+              <span>
+                <R>{INTRO.runner}</R>
+                {sc.inning !== undefined && (
+                  <>
+                    {' ・ '}
+                    <R>{INTRO.inning(sc.inning)}</R>
+                  </>
+                )}
+                {sc.scoreDiff !== undefined && (
+                  <>
+                    {' ・ '}
+                    <R>{INTRO.score(sc.scoreDiff)}</R>
+                  </>
+                )}
+              </span>
             </div>
             <div>
               <R>{`${INTRO.runnerSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}`}</R>
+              {sc.outfieldDepth !== 'normal' && (
+                <>
+                  {'　'}
+                  <R>{`{外野|がいや}：${LABEL.depth[sc.outfieldDepth]}`}</R>
+                </>
+              )}
             </div>
-            <div>
+            <div className="muted small-text">
               <R>
-                {`${INTRO.arms}：レフト ${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.LF]} / センター ${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.CF]} / ライト ${hideTraits ? '？' : LABEL.arm[sc.outfieldArm.RF]}`}
+                {hideTraits
+                  ? '{足|あし}と{肩|かた}はかくれているよ。{外野手|がいやしゅ}の{動|うご}きを{見|み}て{判断|はんだん}しよう'
+                  : `⬆ ${INTRO.arms}は、{外野手|がいやしゅ}の{下|した}に{書|か}いてあるよ`}
               </R>
             </div>
-            {sc.outfieldDepth !== 'normal' && (
-              <div>
-                <R>{`{外野|がいや}：${LABEL.depth[sc.outfieldDepth]}`}</R>
-              </div>
-            )}
-            {hideTraits && (
-              <div className="muted small-text">
-                <R>{'{足|あし}と{肩|かた}はかくれているよ。{外野手|がいやしゅ}の{動|うご}きを{見|み}て{判断|はんだん}しよう'}</R>
-              </div>
-            )}
           </div>
           <p className="tap">
             <R>{INTRO.tapToStart}</R>
