@@ -172,19 +172,18 @@ export function checklist(tl: PlayTimeline, threshold: number, timing: Timing): 
 export const HINT = {
   title: 'ここで{判断|はんだん}！',
   /** 上のバーに1行で出すので短く */
-  points: (sc: Scenario, hideTraits: boolean) => {
+  points: (sc: Scenario) => {
     const list = [
       ['0アウト→{慎重|しんちょう}に', '1アウト→ふつう', '2アウト→{積極的|せっきょくてき}に'][sc.outs],
       '{外野手|がいやしゅ}は{前|まえ}？{横|よこ}？{後|うし}ろ？',
     ];
-    if (!hideTraits) list.push(`{足|あし}：${LABEL.runnerSpeed[sc.runnerSpeed]}`);
     list.push('（タップでつづける）');
     return list;
   },
   resume: 'タップしてつづける',
   batterTitle: 'バッターランナーも{判断|はんだん}！',
   /** 打者走者の判断のヒント（上のバーに1行） */
-  batterPoints: (sc: Scenario, hideTraits: boolean) => {
+  batterPoints: (sc: Scenario) => {
     const list = [
       [
         '0アウト→{確実|かくじつ}なら三塁へ',
@@ -193,7 +192,6 @@ export const HINT = {
       ][sc.outs],
       'ボールは{今|いま}どこ？ {中継|ちゅうけい}に{返|かえ}った？',
     ];
-    if (!hideTraits) list.push(`{打者|だしゃ}の{足|あし}：${LABEL.runnerSpeed[sc.batterSpeed ?? 'normal']}`);
     list.push('（タップでつづける）');
     return list;
   },

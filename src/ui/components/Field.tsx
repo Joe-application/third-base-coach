@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import { FIELD } from '../../sim/constants';
 import { BASES, COACH_POSITION, fenceDistance, dirFromAngle } from '../../sim/field';
-import type { Arm, FielderId, Frame, OutfielderId, Vec } from '../../sim/types';
+import type { Arm, FielderId, Frame, OutfielderId, RunnerSpeed, Vec } from '../../sim/types';
 import type { Call } from '../playback';
 
 const NUMBERS: Record<FielderId, string> = {
@@ -131,15 +131,20 @@ function Coach({ signal, pulse }: { signal: 'send' | 'stop' | null; pulse: boole
 
 /** 外野手の肩のラベル（「かた」はどこも同じなので強さだけ。SVG ではふりがなを付けられないのでひらがな） */
 const ARM_TEXT: Record<Arm, string> = { strong: 'つよい', normal: 'ふつう', weak: 'よわい' };
-const ARM_COLOR: Record<Arm, string> = { strong: '#fecaca', normal: '#f1f5f9', weak: '#bbf7d0' };
+const SPEED_TEXT: Record<RunnerSpeed, string> = { fast: 'はやい', normal: 'ふつう', slow: 'おそい' };
+// 緑＝攻撃側にとってチャンス、赤っぽい＝攻撃側にとって危ない（肩も足も同じ考え方）
+const GOOD = '#bbf7d0';
+const BAD = '#fecaca';
+const PLAIN = '#f1f5f9';
+const ARM_COLOR: Record<Arm, string> = { strong: BAD, normal: PLAIN, weak: GOOD };
+const SPEED_COLOR: Record<RunnerSpeed, string> = { fast: GOOD, normal: PLAIN, slow: BAD };
 
-function ArmLabel({ p, arm }: { p: Vec; arm: Arm | 'hidden' }) {
-  const text = arm === 'hidden' ? '？' : ARM_TEXT[arm];
-  const color = arm === 'hidden' ? '#f1f5f9' : ARM_COLOR[arm];
+/** 選手の下に出す小さなラベル（SVG ではふりがなを付けられないのでひらがな） */
+function TraitLabel({ p, text, color, bg }: { p: Vec; text: string; color: string; bg: string }) {
   const w = text.length * 2.55 + 1.8;
   return (
     <g transform={`translate(${p.x.toFixed(2)},${(-p.y + 4.3).toFixed(2)})`}>
-      <rect x={-w / 2} y={-1.9} width={w} height={3.8} rx={1.9} fill="#0f172a" opacity={0.8} />
+      <rect x={-w / 2} y={-1.9} width={w} height={3.8} rx={1.9} fill={bg} opacity={0.82} />
       <text y={0.95} textAnchor="middle" fontSize={2.7} fontWeight={800} fill={color}>
         {text}
       </text>
@@ -147,10 +152,31 @@ function ArmLabel({ p, arm }: { p: Vec; arm: Arm | 'hidden' }) {
   );
 }
 
+/** 外野手の肩（「かた」はどこも同じなので強さだけ） */
+function ArmLabel({ p, arm }: { p: Vec; arm: Arm | 'hidden' }) {
+  return (
+    <TraitLabel p={p} text={arm === 'hidden' ? '？' : ARM_TEXT[arm]} color={arm === 'hidden' ? PLAIN : ARM_COLOR[arm]} bg="#0f172a" />
+  );
+}
+
+/** 走者の足 */
+function SpeedLabel({ p, speed }: { p: Vec; speed: RunnerSpeed | 'hidden' }) {
+  return (
+    <TraitLabel
+      p={p}
+      text={speed === 'hidden' ? '？' : SPEED_TEXT[speed]}
+      color={speed === 'hidden' ? PLAIN : SPEED_COLOR[speed]}
+      bg="#7f1d1d"
+    />
+  );
+}
+
 export type FieldProps = {
   frame: Frame;
   /** 外野手の肩（'hidden' なら「？」） */
   arms?: Record<OutfielderId, Arm> | 'hidden';
+  /** 二塁走者と打者走者の足（'hidden' なら「？」） */
+  speeds?: { runner: RunnerSpeed; batter: RunnerSpeed } | 'hidden';
   trail?: Vec[];
   coach?: 'send' | 'stop' | null;
   pulse?: boolean;
@@ -165,7 +191,7 @@ export type FieldProps = {
 
 export const FULL_VIEW = { x0: -54, x1: 54, y0: -9, y1: 82 };
 
-export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
+export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, speeds, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
   const f = frame.fielders;
   const ball = frame.ball;
   const lift = ball.h * 0.45;
@@ -198,6 +224,12 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
           ))}
         {batterPulse && (
           <circle cx={frame.batter.x} cy={-frame.batter.y} r={3.4} className="coach-pulse" fill="none" stroke="var(--accent)" strokeWidth={0.6} />
+        )}
+        {speeds && (
+          <>
+            <SpeedLabel p={frame.runner} speed={speeds === 'hidden' ? 'hidden' : speeds.runner} />
+            <SpeedLabel p={frame.batter} speed={speeds === 'hidden' ? 'hidden' : speeds.batter} />
+          </>
         )}
         <Player p={frame.batter} label="打" fill="var(--offense-2)" r={1.5} />
         <Player p={frame.runner} label="走" fill="var(--offense)" r={1.8} />

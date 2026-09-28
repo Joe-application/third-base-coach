@@ -279,7 +279,7 @@ export function PlayScreen() {
           <strong>
             ⏸ <R>{hintFor === 'batter' ? HINT.batterTitle : HINT.title}</R>
           </strong>
-          {(hintFor === 'batter' ? HINT.batterPoints(sc, hideTraits) : HINT.points(sc, hideTraits)).map((p) => (
+          {(hintFor === 'batter' ? HINT.batterPoints(sc) : HINT.points(sc)).map((p) => (
             <span key={p} className="hint-item">
               <R>{p}</R>
             </span>
@@ -293,9 +293,6 @@ export function PlayScreen() {
         <OutsDots outs={sc.outs} />
         <span className="hud-item">
           <R>{INTRO.runner}</R>
-        </span>
-        <span className="hud-item">
-          <R>{`{足|あし}:${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}`}</R>
         </span>
         {session.items.length > 1 && (
           <span className="hud-item muted">
@@ -327,6 +324,7 @@ export function PlayScreen() {
             batterPulse={bInWindow}
             call={callAt(tl, t)}
             arms={hideTraits ? 'hidden' : sc.outfieldArm}
+            speeds={hideTraits ? 'hidden' : { runner: sc.runnerSpeed, batter: sc.batterSpeed ?? 'normal' }}
           />
           {canSlide && (
             <button
@@ -386,20 +384,11 @@ export function PlayScreen() {
                 )}
               </span>
             </div>
-            <div>
-              <R>{`${INTRO.runnerSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}　${INTRO.batterSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.batterSpeed ?? 'normal']}`}</R>
-              {sc.outfieldDepth !== 'normal' && (
-                <>
-                  {'　'}
-                  <R>{`{外野|がいや}：${LABEL.depth[sc.outfieldDepth]}`}</R>
-                </>
-              )}
-            </div>
             <div className="muted small-text">
               <R>
                 {hideTraits
                   ? '{足|あし}と{肩|かた}はかくれているよ。{外野手|がいやしゅ}の{動|うご}きを{見|み}て{判断|はんだん}しよう'
-                  : `⬆ ${INTRO.arms}は、{外野手|がいやしゅ}の{下|した}に{書|か}いてあるよ`}
+                  : '⬆ {外野手|がいやしゅ}の{肩|かた}とランナーの{足|あし}は、{選手|せんしゅ}の{下|した}に{書|か}いてあるよ'}
               </R>
             </div>
           </div>
