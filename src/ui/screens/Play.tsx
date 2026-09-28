@@ -109,12 +109,6 @@ export function PlayScreen() {
     return () => cancelAnimationFrame(raf);
   }, [phase, session.speed, session.hint, win.tWindowStart, fireEvents]);
 
-  // 自動スタート（物語つきの場面はタップを待つ）
-  useEffect(() => {
-    if (phase !== 'intro' || item.presetId === 'anohi') return;
-    const id = setTimeout(() => setPhase((p) => (p === 'intro' ? 'run' : p)), 3000);
-    return () => clearTimeout(id);
-  }, [phase, item.presetId]);
 
   // 終わったら採点して結果画面へ
   useEffect(() => {
