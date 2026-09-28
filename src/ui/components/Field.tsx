@@ -129,12 +129,12 @@ function Coach({ signal, pulse }: { signal: 'send' | 'stop' | null; pulse: boole
   );
 }
 
-/** 外野手の肩のラベル（ひらがな：SVG ではふりがなを付けられないため） */
-const ARM_TEXT: Record<Arm, string> = { strong: 'かた つよい', normal: 'かた ふつう', weak: 'かた よわい' };
+/** 外野手の肩のラベル（「かた」はどこも同じなので強さだけ。SVG ではふりがなを付けられないのでひらがな） */
+const ARM_TEXT: Record<Arm, string> = { strong: 'つよい', normal: 'ふつう', weak: 'よわい' };
 const ARM_COLOR: Record<Arm, string> = { strong: '#fecaca', normal: '#f1f5f9', weak: '#bbf7d0' };
 
 function ArmLabel({ p, arm }: { p: Vec; arm: Arm | 'hidden' }) {
-  const text = arm === 'hidden' ? 'かた ？' : ARM_TEXT[arm];
+  const text = arm === 'hidden' ? '？' : ARM_TEXT[arm];
   const color = arm === 'hidden' ? '#f1f5f9' : ARM_COLOR[arm];
   const w = text.length * 2.55 + 1.8;
   return (
