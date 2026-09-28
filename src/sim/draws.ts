@@ -26,6 +26,11 @@ export type Draws = {
   tagU: number;
   /** 帰塁時の三塁のタッチ判定 [0,1) */
   thirdTagU: number;
+  /** 打者走者への三塁送球：速さ・ズレ・捕球ミス・タッチ */
+  b3SpeedZ: number;
+  b3DevZ: number;
+  b3CatchU: number;
+  b3TagU: number;
 };
 
 export function drawsFromSeed(seed: number): Draws {
@@ -44,6 +49,11 @@ export function drawsFromSeed(seed: number): Draws {
     relaySpeedZ: r.normal(),
     tagU: r.next(),
     thirdTagU: r.next(),
+    // 後から足した値は最後に引く（前の値の並びを変えない）
+    b3SpeedZ: r.normal(),
+    b3DevZ: r.normal(),
+    b3CatchU: r.next(),
+    b3TagU: r.next(),
   };
 }
 

@@ -1,11 +1,11 @@
 // 判断の評価（§5）。P_safe はモンテカルロで求める。
 
-import { EVAL } from './constants';
+import { BATTER, EVAL } from './constants';
 import { drawsFromSeed, mixDraws, type Draws, type KnownFacts } from './draws';
 import { createBallPath } from './ball';
 import { hashSeed } from './rng';
 import { simulatePlay, type PlayTimeline } from './play';
-import { simulateRunner } from './runner';
+import { simulateBatter, simulateRunner } from './runner';
 import type { Command, OutCount, Scenario } from './types';
 
 export type Thresholds = Record<OutCount, number>;
@@ -141,8 +141,103 @@ export type PlayScore = {
   timingPoints: number;
   resultPoints: number;
   slidePoints: number;
+  /** 打者走者の判断（長打で二塁走者を回したときだけ） */
+  batter: BatterScore | null;
   total: number;
 };
+
+export type BatterScore = {
+  decision: 'send' | 'stop';
+  decisionTime: number;
+  /** 三塁へ行かせた場合の三塁セーフ確率 */
+  pSafe: number;
+  safeCount: number;
+  mcRuns: number;
+  threshold: number;
+  grade: GradeResult;
+  timing: Timing;
+  timingPoints: number;
+  resultPoints: number;
+  total: number;
+};
+
+/** 打者走者を時刻 tD に「三塁へ」行かせた場合の三塁セーフ確率 */
+export function estimateBatterPSafe(
+  sc: Scenario,
+  actualDraws: Draws,
+  leadCommands: Command[],
+  batterPrior: Command[],
+  tD: number,
+  n: number = EVAL.mcRuns,
+  mcSeed = hashSeed(sc.seed, 0xba77),
+): PSafeEstimate {
+  const actual = simulatePlay(sc, [...leadCommands, ...batterPrior], actualDraws, { frames: false });
+  const known = knownFactsAt(actual, tD);
+  const commands: Command[] = [...leadCommands, ...batterPrior, { t: tD, kind: 'bsend' }];
+  let safe = 0;
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    const draws = mixDraws(actualDraws, drawsFromSeed(hashSeed(mcSeed, i)), known);
+    const tl = simulatePlay(sc, commands, draws, { frames: false });
+    if (!tl.batter?.eligible) continue;
+    count++;
+    if (tl.batter.result === 'third') safe++;
+  }
+  return { pSafe: count ? safe / count : 0, safe, n: count };
+}
+
+export function batterThresholdFor(sc: Scenario): number {
+  return BATTER.thresholds[sc.outs];
+}
+
+function scoreBatter(timeline: PlayTimeline, draws: Draws, mcRuns: number): BatterScore | null {
+  const b = timeline.batter;
+  if (!b || !b.eligible) return null;
+  const sc = timeline.scenario;
+  const tr = b.trace;
+  const leadCommands = timeline.runner.accepted;
+  const decisions = tr.accepted;
+  const last = decisions.at(-1);
+  let decision: 'send' | 'stop';
+  let tD: number;
+  let prior: Command[];
+  if (last) {
+    decision = last.kind === 'bsend' ? 'send' : 'stop';
+    tD = last.t;
+    prior = decisions.slice(0, -1);
+  } else {
+    decision = 'stop';
+    tD = tr.tHesitate ?? tr.tThird ?? 0;
+    prior = [];
+  }
+  const est = estimateBatterPSafe(sc, draws, leadCommands, prior, tD, mcRuns);
+  const threshold = batterThresholdFor(sc);
+  const g = gradeDecision(decision, est.pSafe, threshold);
+  const grade = { ...g, points: EVAL.batterPoints[g.grade] };
+  const hesitated = tr.hesitated && (!last || last.t >= (tr.tHesitate ?? Infinity));
+  // 打者走者の判断の手がかりは、外野手が投げた瞬間（中継に返すか・どこへ投げるか）
+  const free = simulateBatter(sc, [], false);
+  const timing = judgeTiming(tD, hesitated, timeline.fielding.tRelease, {
+    tWindowStart: free.tWindowStart ?? 0,
+    tThird: free.tThird ?? 0,
+  });
+  const timingPoints =
+    timing === 'best' ? EVAL.batterTimingBonus : timing === 'hesitate' ? EVAL.batterHesitatePenalty : 0;
+  const resultPoints = b.result === 'third' ? EVAL.batterSafeBonus : 0;
+  return {
+    decision,
+    decisionTime: tD,
+    pSafe: est.pSafe,
+    safeCount: est.safe,
+    mcRuns: est.n,
+    threshold,
+    grade,
+    timing,
+    timingPoints,
+    resultPoints,
+    total: grade.points + timingPoints + resultPoints,
+  };
+}
 
 /**
  * 1プレーの採点。timeline は最終的な合図で計算したもの。
@@ -177,6 +272,7 @@ export function scorePlay(
   const timingPoints = timing === 'best' ? EVAL.timingBonus : timing === 'hesitate' ? EVAL.hesitatePenalty : 0;
   const resultPoints = timeline.result === 'safe' ? EVAL.safeBonus : 0;
   const slidePoints = timeline.slideHelped ? EVAL.slideBonus : 0;
+  const batter = scoreBatter(timeline, draws, opts.mcRuns ?? EVAL.mcRuns);
   return {
     decision,
     decisionTime: tD,
@@ -189,6 +285,7 @@ export function scorePlay(
     timingPoints,
     resultPoints,
     slidePoints,
-    total: grade.points + timingPoints + resultPoints + slidePoints,
+    batter,
+    total: grade.points + timingPoints + resultPoints + slidePoints + (batter?.total ?? 0),
   };
 }

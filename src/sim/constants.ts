@@ -129,6 +129,26 @@ export const RUNNER = {
   batterReaction: 0.35,
 };
 
+// ---- 打者走者（長打のときの「二塁を回るか」の判断） ----
+export const BATTER = {
+  /** 打者走者の最高速（打ってすぐなので二塁走者より少し遅め） */
+  topSpeed: { slow: 5.8, normal: 6.3, fast: 6.9 } satisfies Record<RunnerSpeed, number>,
+  /** 本塁からこれ以上遠くで捕った打球は長打として扱う（m） */
+  deepCatch: 60,
+  /** 打ってから走り出すまで */
+  reaction: 0.35,
+  /** 三塁ベースで待つ三塁手が捕りそこねる確率 */
+  thirdDropProb: 0.08,
+  /** 三塁送球の左右ズレの標準偏差 = この値 × 距離 */
+  sigmaPerMeter: 0.05,
+  /** 二塁走者がこれだけ先に本塁に着きそうなら、中継は三塁へ投げる（秒） */
+  cutMargin: 0.3,
+  /** 三塁を狙うべき「三塁セーフ確率」の基準（アウトカウント別）。
+   *  「三塁でアウトになるな」の考え方：1アウトの三塁は犠牲フライやゴロでも1点なので価値が大きい。
+   *  2アウトは二塁でも三塁でもヒット1本で帰れるので、ほぼ無理をしない */
+  thresholds: { 0: 0.7, 1: 0.65, 2: 0.85 } satisfies Record<OutCount, number>,
+};
+
 // ---- 送球（§4.6） ----
 export const ARM: Record<Arm, { vLine: number; dMax: number; sigmaFactor: number }> = {
   weak: { vLine: 18, dMax: 45, sigmaFactor: 1.2 },
@@ -202,6 +222,11 @@ export const EVAL = {
   hesitatePenalty: -30,
   safeBonus: 20,
   slideBonus: 10,
+  /** 打者走者（二塁を回るか）の判断。1プレーの中の2つ目の判断なので、点は半分くらい */
+  batterPoints: { great: 50, ok: 30, bad: 0 },
+  batterTimingBonus: 10,
+  batterHesitatePenalty: -15,
+  batterSafeBonus: 10,
 };
 
 /** シミュレーションの時間刻み */

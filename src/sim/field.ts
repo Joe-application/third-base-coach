@@ -84,11 +84,28 @@ export function runnerPosition(g: number, bulge: number): Vec {
   return p;
 }
 
-/** 打者走者：本塁 → 一塁 → 二塁 の折れ線上の位置 */
-export function batterPosition(g: number): Vec {
+// 打者走者の進み具合 g は「本塁 → 一塁 → 二塁 → 三塁」の折れ線に沿った距離。
+export const G_B_FIRST = FIELD.baseDistance;
+export const G_B_SECOND = FIELD.baseDistance * 2;
+export const G_B_THIRD = FIELD.baseDistance * 3;
+
+/**
+ * 打者走者の位置。roundFirst なら一塁を、roundSecond なら二塁を膨らんで回る。
+ */
+export function batterPosition(g: number, roundFirst = false, roundSecond = false): Vec {
   const d = FIELD.baseDistance;
-  if (g <= d) return lerp(BASES.home, BASES.first, Math.max(0, g) / d);
-  return lerp(BASES.first, BASES.second, Math.min(1, (g - d) / d));
+  let p: Vec;
+  if (g <= d) p = lerp(BASES.home, BASES.first, Math.max(0, g) / d);
+  else if (g <= 2 * d) p = lerp(BASES.first, BASES.second, (g - d) / d);
+  else p = lerp(BASES.second, BASES.third, Math.min(1, (g - 2 * d) / d));
+  const bump = (base: number, dir: Vec) => {
+    const z0 = base - RUNNER.turnZoneBefore;
+    const z1 = base + RUNNER.turnZoneAfter;
+    if (g > z0 && g < z1) p = add(p, scale(dir, RUNNER.turnExtraPath * Math.sin((Math.PI * (g - z0)) / (z1 - z0))));
+  };
+  if (roundFirst) bump(G_B_FIRST, vec(1, 0));
+  if (roundSecond) bump(G_B_SECOND, vec(0, 1));
+  return p;
 }
 
 /** 三塁コーチャーの位置（コーチャーズボックス） */

@@ -2,18 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RUNNER } from '../../sim/constants';
 import { drawsFromSeed } from '../../sim/draws';
 import { decisionWindow, scorePlay } from '../../sim/evaluate';
-import { G_HOME, G_THIRD } from '../../sim/field';
+import { G_B_SECOND, G_HOME, G_THIRD } from '../../sim/field';
 import { frameAt, simulatePlay } from '../../sim/play';
 import { runnerGAt } from '../../sim/runner';
-import type { Command, CommandKind, PlayResult } from '../../sim/types';
+import type { Command, CommandKind } from '../../sim/types';
 import { ANOHI_STORY, BUTTONS, HINT, INTRO, LABEL, VOICE } from '../../game/messages';
-import { applyPlay, comboMultiplier } from '../../game/progression';
+import { applyPlay, comboMultiplier, isPlayGreat } from '../../game/progression';
 import { appendHistory } from '../../game/storage';
 import { sfx, unlockAudio, vibrate } from '../audio';
 import { Field } from '../components/Field';
 import { OutsDots } from '../components/OutsDots';
 import { R } from '../components/Ruby';
-import { signalAt, trailAt } from '../playback';
+import { callAt, signalAt, trailAt } from '../playback';
 import { useApp } from '../state';
 import { say } from '../voice';
 
@@ -21,10 +21,11 @@ const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
 
 type Phase = 'intro' | 'run' | 'hint' | 'done';
 
-function ButtonLabel({ text }: { text: string }) {
+function ButtonLabel({ text, caption }: { text: string; caption?: string }) {
   const [icon, ...rest] = text.split(' ');
   return (
     <span className="decide-label">
+      {caption && <span className="decide-caption">{caption}</span>}
       <span className="decide-icon">{icon}</span>
       <R>{rest.join(' ')}</R>
     </span>
@@ -46,7 +47,9 @@ export function PlayScreen() {
   const hintShownRef = useRef(false);
   const [phase, setPhase] = useState<Phase>('intro');
   const [t, setT] = useState(0);
-  const [call, setCall] = useState<PlayResult | null>(null);
+  /** 'lead' = 二塁走者のヒント、'batter' = 打者走者のヒント */
+  const [hintFor, setHintFor] = useState<'lead' | 'batter'>('lead');
+  const batterHintShownRef = useRef(false);
 
   const decided = tl.runner.accepted.some((c) => c.kind !== 'slide');
   const signal = signalAt(tl, t);
@@ -72,11 +75,26 @@ export function PlayScreen() {
           vibrate([20, 40, 20]);
           break;
         case 'autoStop':
-          say(VOICE.stop[1], { rate: 1.3 });
+          say(e.detail === 'batter' ? VOICE.bstop[0] : VOICE.stop[1], { rate: 1.3 });
+          break;
+        case 'cutToThird':
+          sfx.glove();
+          break;
+        case 'batterCall':
+          // 三塁のタッチプレー
+          if (e.detail === 'third') {
+            say(VOICE.safe, { pitch: 1.3, rate: 1.1 });
+            sfx.safe();
+            sfx.cheer();
+          } else {
+            say(VOICE.out, { pitch: 0.8, rate: 1.0 });
+            sfx.out();
+            sfx.groan();
+          }
+          if (cur.batter?.third) vibrate(120);
           break;
         case 'call':
           // 審判のコール：クロスプレーの瞬間に「セーフ！」「アウト！」
-          setCall(cur.result);
           if (cur.result === 'safe') {
             say(VOICE.safe, { pitch: 1.3, rate: 1.1 });
             sfx.safe();
@@ -109,6 +127,20 @@ export function PlayScreen() {
         fireEvents(prev, nt);
         tRef.current = nt;
         setT(nt);
+        setHintFor('lead');
+        setPhase('hint');
+        return;
+      }
+      // 打者走者の判断ウィンドウでも一度止める
+      const b = tlRef.current.batter;
+      const bWin = b?.eligible ? b.trace.tWindowStart : null;
+      if (session.hint && !batterHintShownRef.current && bWin !== null && b!.trace.accepted.length === 0 && nt >= bWin) {
+        nt = bWin;
+        batterHintShownRef.current = true;
+        fireEvents(prev, nt);
+        tRef.current = nt;
+        setT(nt);
+        setHintFor('batter');
         setPhase('hint');
         return;
       }
@@ -135,7 +167,7 @@ export function PlayScreen() {
         thresholds: state.settings.thresholds,
         situational: state.settings.situational,
       });
-      const great = score.grade.grade === 'great';
+      const great = isPlayGreat(score);
       const combo = great ? session.combo + 1 : 0;
       const multiplier = comboMultiplier(combo);
       const points = Math.max(0, Math.round(score.total * multiplier));
@@ -156,6 +188,15 @@ export function PlayScreen() {
         result: final.result,
         score: points,
         playedAt: Date.now(),
+        batter: score.batter
+          ? {
+              decision: score.batter.decision,
+              pSafe: score.batter.pSafe,
+              threshold: score.batter.threshold,
+              grade: score.batter.grade.grade,
+              result: final.batter!.result,
+            }
+          : undefined,
       });
       if (great) {
         sfx.fanfare();
@@ -177,13 +218,15 @@ export function PlayScreen() {
     unlockAudio();
     const cmd: Command = { t: tRef.current, kind };
     const next = simulatePlay(sc, [...cmdsRef.current, cmd], draws);
-    if (!next.runner.accepted.some((c) => c.t === cmd.t && c.kind === kind)) return;
+    const acceptedList = kind === 'bsend' || kind === 'bstop' ? (next.batter?.eligible ? next.batter.trace.accepted : []) : next.runner.accepted;
+    if (!acceptedList.some((c) => c.t === cmd.t && c.kind === kind)) return;
     cmdsRef.current = [...cmdsRef.current, cmd];
     tlRef.current = next;
     setTl(next);
     sfx.signal();
     // コーチャーの声：押した瞬間に出す
-    say(pick(kind === 'send' ? VOICE.send : kind === 'stop' ? VOICE.stop : VOICE.slide), { pitch: 1.25, rate: 1.35 });
+    const lines = { send: VOICE.send, stop: VOICE.stop, slide: VOICE.slide, bsend: VOICE.bsend, bstop: VOICE.bstop }[kind];
+    say(pick(lines), { pitch: 1.25, rate: 1.35 });
     vibrate(kind === 'slide' ? 20 : 40);
     if (phase === 'hint') setPhase('run');
   };
@@ -207,15 +250,36 @@ export function PlayScreen() {
   const canSlide = signal === 'send' && !r.slideCalled && rg < G_HOME - RUNNER.slideDeadline && phase !== 'done';
   const hideTraits = session.hideTraits;
 
+  // 打者走者（長打で二塁走者を回したとき）：二塁の手前 12m から、ボタンが打者走者用に変わる
+  const bp = tl.batter?.eligible ? tl.batter : null;
+  const bt = bp?.trace;
+  const leadLocked = r.tHome !== null ? t >= r.tHome || rg > G_THIRD + RUNNER.changeMindLimit : false;
+  const batterMode = !!bt && bt.tWindowStart !== null && t >= bt.tWindowStart && leadLocked && active;
+  const bDecided = !!bt && bt.accepted.some((c) => c.t <= t);
+  const bSignal = bt?.accepted.filter((c) => c.t <= t).at(-1)?.kind ?? null;
+  const bAutoStoppedNow = !!bt && bt.autoStopped && bt.tHesitate !== null && t >= bt.tHesitate + RUNNER.hesitateDuration;
+  const bg = bt ? runnerGAt(bt, t).g : 0;
+  const bInWindow = batterMode && !bDecided && !bAutoStoppedNow;
+  const canBSend = batterMode && !bDecided && !bAutoStoppedNow;
+  const canBStop =
+    batterMode && ((!bDecided && !bAutoStoppedNow) || (bSignal === 'bsend' && bg <= G_B_SECOND + RUNNER.changeMindLimit));
+
+  const stopBtn = batterMode
+    ? { kind: 'bstop' as const, text: BUTTONS.bstop, enabled: canBStop, glow: bInWindow, chosen: bSignal === 'bstop' }
+    : { kind: 'stop' as const, text: BUTTONS.stop, enabled: canStop, glow: inWindow, chosen: signal === 'stop' };
+  const sendBtn = batterMode
+    ? { kind: 'bsend' as const, text: BUTTONS.bsend, enabled: canBSend, glow: bInWindow, chosen: bSignal === 'bsend' }
+    : { kind: 'send' as const, text: BUTTONS.send, enabled: canSend, glow: inWindow, chosen: signal === 'send' };
+
   return (
     <div className="play">
       {phase === 'hint' ? (
         // フィールドを隠さないように、上のバーにヒントを出す
         <div className="hud hint-strip" onClick={start} role="button">
           <strong>
-            ⏸ <R>{HINT.title}</R>
+            ⏸ <R>{hintFor === 'batter' ? HINT.batterTitle : HINT.title}</R>
           </strong>
-          {HINT.points(sc, hideTraits).map((p) => (
+          {(hintFor === 'batter' ? HINT.batterPoints(sc, hideTraits) : HINT.points(sc, hideTraits)).map((p) => (
             <span key={p} className="hint-item">
               <R>{p}</R>
             </span>
@@ -244,14 +308,14 @@ export function PlayScreen() {
 
       <div className="play-stage">
         <button
-          className={`decide stop ${inWindow ? 'glow' : ''} ${signal === 'stop' ? 'chosen' : ''}`}
-          disabled={!canStop}
+          className={`decide stop ${stopBtn.glow ? 'glow' : ''} ${stopBtn.chosen ? 'chosen' : ''} ${batterMode ? 'batter' : ''}`}
+          disabled={!stopBtn.enabled}
           onPointerDown={(e) => {
             e.preventDefault();
-            press('stop');
+            press(stopBtn.kind);
           }}
         >
-          <ButtonLabel text={BUTTONS.stop} />
+          <ButtonLabel text={stopBtn.text} caption={batterMode ? BUTTONS.batterCaption : undefined} />
         </button>
 
         <div className="play-field">
@@ -259,8 +323,9 @@ export function PlayScreen() {
             frame={frame}
             trail={trailAt(tl, t)}
             coach={signal}
-            pulse={inWindow}
-            call={call}
+            pulse={inWindow || bInWindow}
+            batterPulse={bInWindow}
+            call={callAt(tl, t)}
             arms={hideTraits ? 'hidden' : sc.outfieldArm}
           />
           {canSlide && (
@@ -279,14 +344,14 @@ export function PlayScreen() {
         </div>
 
         <button
-          className={`decide send ${inWindow ? 'glow' : ''} ${signal === 'send' ? 'chosen' : ''}`}
-          disabled={!canSend}
+          className={`decide send ${sendBtn.glow ? 'glow' : ''} ${sendBtn.chosen ? 'chosen' : ''} ${batterMode ? 'batter' : ''}`}
+          disabled={!sendBtn.enabled}
           onPointerDown={(e) => {
             e.preventDefault();
-            press('send');
+            press(sendBtn.kind);
           }}
         >
-          <ButtonLabel text={BUTTONS.send} />
+          <ButtonLabel text={sendBtn.text} caption={batterMode ? BUTTONS.batterCaption : undefined} />
         </button>
       </div>
     </div>
@@ -322,7 +387,7 @@ export function PlayScreen() {
               </span>
             </div>
             <div>
-              <R>{`${INTRO.runnerSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}`}</R>
+              <R>{`${INTRO.runnerSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.runnerSpeed]}　${INTRO.batterSpeed}：${hideTraits ? LABEL.hidden : LABEL.runnerSpeed[sc.batterSpeed ?? 'normal']}`}</R>
               {sc.outfieldDepth !== 'normal' && (
                 <>
                   {'　'}

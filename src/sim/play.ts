@@ -3,6 +3,8 @@
 // UI はここで作った PlayTimeline を再生するだけにする。
 
 import { createBallPath, type BallPath } from './ball';
+import { isExtraBase, planBatter, type BatterPlay } from './batter';
+import { outProbability } from './probability';
 import { CROSSPLAY, FIELDER, FRAME_DT, RUNNER, THROW } from './constants';
 import { drawsFromSeed, type Draws } from './draws';
 import {
@@ -16,7 +18,7 @@ import {
 } from './field';
 import { chaserPosition, findCatch, fumbleProbability, holdTime, runDistance, type CatchPlan } from './fielder';
 import { runnerGAt, simulateRunner, type RunnerTrace } from './runner';
-import { planThrow, type ThrowPlan } from './throw';
+import { planThrow, type ThrowLeg, type ThrowPlan } from './throw';
 import type {
   Command,
   FielderId,
@@ -67,6 +69,8 @@ export type PlayTimeline = {
   safeReason: SafeReason | null;
   /** スライディングの合図が効いた（クロスプレーでセーフ） */
   slideHelped: boolean;
+  /** 長打のときの打者走者（二塁を回るか）。長打でなければ null */
+  batter: BatterPlay | null;
   events: PlayEvent[];
   duration: number;
   frames: Frame[];
@@ -74,11 +78,7 @@ export type PlayTimeline = {
 
 export type SimOptions = { frames?: boolean };
 
-export function outProbability(delta: number): number {
-  if (delta > CROSSPLAY.clearMargin) return CROSSPLAY.clearOutProb;
-  if (delta < -CROSSPLAY.clearMargin) return 0;
-  return 1 / (1 + Math.exp(-delta / CROSSPLAY.logisticScale));
-}
+export { outProbability };
 
 export function planFielding(scenario: Scenario, ball: BallPath, draws: Draws): FieldingPlan {
   const reaction = draws.fielderReaction;
@@ -101,7 +101,12 @@ export function simulatePlay(
   const fielding = planFielding(scenario, ball, draws);
   const arm = scenario.outfieldArm[fielding.fielder];
   const throwPlan = planThrow(fielding.fielder, fielding.point, arm, fielding.tRelease, draws);
-  const runner = simulateRunner(scenario, commands, ball.landingTime, record);
+  const leadCommands = commands.filter((c) => c.kind === 'send' || c.kind === 'stop' || c.kind === 'slide');
+  const runner = simulateRunner(scenario, leadCommands, ball.landingTime, record);
+  const batter = isExtraBase(ball, fielding)
+    ? planBatter(scenario, fielding, throwPlan, runner, commands, draws, record)
+    : null;
+  const cut = batter?.throw?.via === 'cut';
 
   let result: PlayResult;
   let safeReason: SafeReason | null = null;
@@ -112,7 +117,11 @@ export function simulatePlay(
   const tCatcherReady = tBall + (throwPlan.catcherMoved ? THROW.catcherMoveTime : 0);
 
   if (runner.tHome !== null) {
-    if (throwPlan.wild) {
+    if (cut) {
+      // 中継が三塁へ投げたので、本塁には送球が来ない
+      result = 'safe';
+      safeReason = 'beat_throw';
+    } else if (throwPlan.wild) {
       result = 'safe';
       safeReason = 'wild_throw';
     } else if (throwPlan.catcherDrop) {
@@ -149,9 +158,13 @@ export function simulatePlay(
     }
   }
 
-  const events = buildEvents(scenario, ball, fielding, throwPlan, runner, crossPlay, thirdPlay, result);
+  const events = buildEvents(scenario, ball, fielding, throwPlan, runner, crossPlay, thirdPlay, result, batter);
+  const bt = batter?.trace;
   const endCandidates = [
-    throwPlan.tArriveHome + 1.2,
+    cut ? batter!.throw!.tEnd + 1.2 : throwPlan.tArriveHome + 1.2,
+    batter?.third ? batter.third.tBallReady + 0.6 : 0,
+    bt?.tHome ?? 0,
+    bt?.tThird != null ? bt.tThird + RUNNER.hesitateDuration + 1.2 : 0,
     runner.tHome ?? 0,
     runner.retreat?.tBack ?? 0,
     thirdPlay ? thirdPlay.tBallReady : 0,
@@ -172,6 +185,7 @@ export function simulatePlay(
     result,
     safeReason,
     slideHelped,
+    batter,
     events,
     duration,
     frames: [],
@@ -189,7 +203,9 @@ function buildEvents(
   cp: CrossPlay | null,
   tp: ThirdPlay | null,
   result: PlayResult,
+  batter: BatterPlay | null,
 ): PlayEvent[] {
+  const cut = batter?.throw?.via === 'cut';
   const ev: PlayEvent[] = [{ t: 0, kind: 'contact' }, { t: r.tStart, kind: 'runnerStart' }];
   if (scenario.battedBall.type !== 'ground') ev.push({ t: ball.landingTime, kind: 'land' });
   if (r.tWindowStart !== null) ev.push({ t: r.tWindowStart, kind: 'windowStart' });
@@ -205,7 +221,7 @@ function buildEvents(
   if (r.autoStopped && r.tHesitate !== null)
     ev.push({ t: r.tHesitate + RUNNER.hesitateDuration, kind: 'autoStop' });
   for (const c of r.accepted) ev.push({ t: c.t, kind: 'decision', detail: c.kind });
-  ev.push({ t: th.tArriveHome, kind: 'ballHome' });
+  if (!cut) ev.push({ t: th.tArriveHome, kind: 'ballHome' });
   if (cp) ev.push({ t: cp.tRun, kind: 'runnerHome' });
   if (tp) ev.push({ t: tp.tBallReady - CROSSPLAY.tagTime, kind: 'throwThird' });
   if (result === 'stop' || result === 'out_third') {
@@ -218,6 +234,23 @@ function buildEvents(
   else if (tp) tCall = Math.max(tp.tBack, tp.tBallReady) + 0.1;
   else tCall = r.retreat?.tBack ?? (r.tThird ?? 0) + 0.8;
   ev.push({ t: tCall, kind: 'call', detail: result });
+
+  // 打者走者
+  if (batter) {
+    const bt = batter.trace;
+    if (batter.eligible && bt.tWindowStart !== null) ev.push({ t: bt.tWindowStart, kind: 'batterWindow' });
+    if (bt.tThird !== null) ev.push({ t: bt.tThird, kind: 'batterSecond' });
+    if (batter.eligible && bt.tHesitate !== null) {
+      ev.push({ t: bt.tHesitate, kind: 'hesitate', detail: 'batter' });
+      if (bt.autoStopped) ev.push({ t: bt.tHesitate + RUNNER.hesitateDuration, kind: 'autoStop', detail: 'batter' });
+    }
+    for (const c of bt.accepted) if (batter.eligible) ev.push({ t: c.t, kind: 'decision', detail: c.kind });
+    if (batter.throw?.via === 'cut') ev.push({ t: batter.throw.tStart, kind: 'cutToThird' });
+    if (batter.result !== 'second' && bt.tHome !== null) {
+      const tB = batter.third ? Math.max(batter.third.tRun, batter.third.tBallReady) + 0.1 : bt.tHome + 0.15;
+      ev.push({ t: tB, kind: 'batterCall', detail: batter.result });
+    }
+  }
   return ev.sort((a, b) => a.t - b.t);
 }
 
@@ -252,12 +285,36 @@ function buildFrames(tl: PlayTimeline): Frame[] {
   const cutoff = lerp(vec(0, 0), f.point, 0.35);
   const lastLeg = th.legs[th.legs.length - 1];
   const catcherSpot = vec(Math.max(-3.5, Math.min(3.5, th.dev)), -0.6);
+  const bThrow = tl.batter?.throw ?? null;
+  const cut = bThrow?.via === 'cut';
+  const thirdBag = vec(BASES.third.x + 0.6, BASES.third.y + 0.4);
+  const cutLeg: ThrowLeg | null = cut
+    ? {
+        thrower: bThrow.thrower,
+        from: bThrow.from,
+        to: vec(thirdBag.x + Math.max(-5, Math.min(5, bThrow.dev)) * 0.7, thirdBag.y - Math.max(-5, Math.min(5, bThrow.dev)) * 0.7),
+        tStart: bThrow.tStart,
+        tEnd: bThrow.tEnd,
+        distance: bThrow.distance,
+        bounce: false,
+      }
+    : null;
+  // 中継が三塁へ投げたときは、本塁への2本目の送球の代わりに三塁への送球を描く
+  const legs: ThrowLeg[] = cutLeg ? (th.relay ? [th.legs[0], cutLeg] : [cutLeg]) : th.legs;
 
   // 打者走者：一塁へ走り、本塁へ送球されたら二塁を狙う（表示のみ）
   const bTop = RUNNER.batterTopSpeed;
   const bReact = RUNNER.batterReaction;
   let tAtFirst = bReact;
   while (accelRun(tAtFirst - bReact, bTop, RUNNER.accel) < 23) tAtFirst += 0.02;
+  const bTrace = tl.batter?.trace;
+  const batterAt = (t: number): Vec => {
+    if (bTrace) {
+      const b = runnerGAt(bTrace, t);
+      return batterPosition(b.g, true, b.bulge > 0);
+    }
+    return batterPosition(batterG(t));
+  };
   const batterG = (t: number) => {
     const g1 = accelRun(t - bReact, bTop, RUNNER.accel);
     if (g1 < 23) return g1;
@@ -280,7 +337,7 @@ function buildFrames(tl: PlayTimeline): Frame[] {
       }
       return { ...catchSpot, h: 1 };
     }
-    for (const leg of th.legs) {
+    for (const leg of legs) {
       if (t < leg.tStart) return { ...leg.from, h: 1 };
       if (t < leg.tEnd) {
         const k = (t - leg.tStart) / (leg.tEnd - leg.tStart);
@@ -294,6 +351,13 @@ function buildFrames(tl: PlayTimeline): Frame[] {
         return { ...p, h };
       }
     }
+    if (cutLeg) {
+      if (bThrow!.wild) {
+        const k = Math.min(1, (t - cutLeg.tEnd) / 1.2);
+        return { x: cutLeg.to.x - 8 * k, y: cutLeg.to.y - 6 * k, h: 0.3 * (1 - k) };
+      }
+      return { ...thirdBag, h: 1 };
+    }
     const tArr = lastLeg.tEnd;
     if (th.wild) {
       const k = Math.min(1, (t - tArr) / 1.2);
@@ -306,6 +370,11 @@ function buildFrames(tl: PlayTimeline): Frame[] {
         const k = Math.min(1, (t - t0) / (t1 - t0));
         return { ...lerp(catcherSpot, vec(BASES.third.x + 0.8, BASES.third.y), k), h: 1.5 + Math.sin(Math.PI * k) };
       }
+    }
+    if (bThrow && bThrow.via === 'catcher' && t >= bThrow.tStart) {
+      // 打者走者を三塁で刺しにいく捕手の送球
+      const k = Math.min(1, (t - bThrow.tStart) / (bThrow.tEnd - bThrow.tStart));
+      return { ...lerp(catcherSpot, thirdBag, k), h: 1.5 + Math.sin(Math.PI * k) };
     }
     if (th.catcherDrop && t < tArr + 0.8) {
       const k = (t - tArr) / 0.8;
@@ -352,7 +421,7 @@ function buildFrames(tl: PlayTimeline): Frame[] {
       t,
       ball: ballAt(t),
       runner: runnerPosition(rg.g, rg.bulge),
-      batter: batterPosition(batterG(t)),
+      batter: batterAt(t),
       fielders: fieldersAt(t),
     });
   }

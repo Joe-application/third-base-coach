@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { simulatePlay } from '../../sim/play';
 import type { Command } from '../../sim/types';
 import {
+  BATTER_RESULT,
+  batterChecklist,
+  batterMessage,
   checklist,
   COMBO_TEXT,
   GRADE_MARK,
@@ -36,6 +39,8 @@ export function ResultScreen() {
   const msg = resultMessage(g, score.decision, tl.result, tl.scenario.outs, score.pSafe);
   const comment = managerComment(g, score.timing, tl, tl.scenario.seed);
   const items = checklist(tl, score.threshold, score.timing);
+  const bs = score.batter;
+  const bItems = bs ? batterChecklist(tl, bs.threshold, bs.timing) : [];
   const isLast = session.index + 1 >= session.items.length;
   const repeatable = session.mode === 'free' || session.mode === 'anohi';
 
@@ -101,6 +106,32 @@ export function ResultScreen() {
                 </span>
                 <b>×{rec.multiplier}</b>
               </div>
+            )}
+            {bs && (
+              <>
+                <div className="score-sub">
+                  <span>
+                    <R>{`バッターランナー ${GRADE_MARK[bs.grade.grade]}`}</R>
+                  </span>
+                  <b>+{bs.grade.points}</b>
+                </div>
+                {bs.timingPoints !== 0 && (
+                  <div className="score-sub">
+                    <span>
+                      <R>{`└ ${TIMING_LABEL[bs.timing]}`}</R>
+                    </span>
+                    <b>{bs.timingPoints > 0 ? `+${bs.timingPoints}` : bs.timingPoints}</b>
+                  </div>
+                )}
+                {bs.resultPoints > 0 && (
+                  <div className="score-sub">
+                    <span>
+                      <R>{'└ {三塁|さんるい}セーフ'}</R>
+                    </span>
+                    <b>+{bs.resultPoints}</b>
+                  </div>
+                )}
+              </>
             )}
             <div className="score-total">
               スコア <b>{rec.points}</b>
@@ -180,6 +211,41 @@ export function ResultScreen() {
               </li>
             ))}
           </ul>
+
+          {bs && tl.batter && (
+            <div className="batter-section">
+              <h3>
+                <R>{'② バッターランナー（{二塁|にるい}を{回|まわ}るか）'}</R>
+              </h3>
+              <div className={`grade grade-${bs.grade.grade} small`}>
+                <span className="grade-mark">{GRADE_MARK[bs.grade.grade]}</span>
+                <div>
+                  <div className="grade-verdict">
+                    <R>{VERDICT_LABEL[bs.grade.verdict]}</R>
+                  </div>
+                  <div className="muted">
+                    <R>{`あなたの{合図|あいず}：${bs.decision === 'send' ? '{三塁|さんるい}へ' : '{二塁|にるい}ストップ'}${bs.timing === 'hesitate' ? '（{迷|まよ}い）' : ''} → ${BATTER_RESULT[tl.batter.result]}`}</R>
+                  </div>
+                </div>
+              </div>
+              <p className="result-msg">
+                <R>{batterMessage(bs.grade.grade, bs.decision, tl.batter.result, tl.scenario.outs, bs.pSafe)}</R>
+              </p>
+              <SafeMeter pSafe={bs.pSafe} threshold={bs.threshold} outs={tl.scenario.outs} batter />
+              <ul className="checklist">
+                {bItems.map((it) => (
+                  <li key={it.label} className={`tone-${it.tone}`}>
+                    <span className="check-label">
+                      <R>{it.label}</R>
+                    </span>
+                    <span>
+                      <R>{it.text}</R>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       </div>
     </div>

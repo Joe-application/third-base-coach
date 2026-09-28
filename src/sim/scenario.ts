@@ -2,6 +2,8 @@
 
 import { baselinePSafe, thresholdFor } from './evaluate';
 import { dirFromAngle, fenceDistance } from './field';
+import { drawsFromSeed } from './draws';
+import { simulatePlay } from './play';
 import { createRng, hashSeed, type Rng } from './rng';
 import type { Arm, BallType, OutCount, Scenario, Strength } from './types';
 
@@ -56,6 +58,18 @@ export const PRESETS: Record<string, Scenario> = {
     outfieldDepth: 'normal',
     seed: 47,
   },
+  rcDeep: {
+    id: 'rcDeep',
+    name: '右中間を深々と破る打球',
+    outs: 1,
+    runners: { first: false, second: true, third: false },
+    battedBall: { type: 'liner', angleDeg: 16, strength: 'hard', landing: landingAt(16, 55, 1.9) },
+    runnerSpeed: 'normal',
+    batterSpeed: 'normal',
+    outfieldArm: allArms('normal'),
+    outfieldDepth: 'normal',
+    seed: 71,
+  },
   cfWeak: {
     id: 'cfWeak',
     name: 'センター前の弱いゴロ',
@@ -69,7 +83,7 @@ export const PRESETS: Record<string, Scenario> = {
   },
 };
 
-export const PRESET_ORDER = ['anohi', 'anohi0', 'lfHardShallow', 'rcGap', 'cfWeak'] as const;
+export const PRESET_ORDER = ['anohi', 'anohi0', 'lfHardShallow', 'rcGap', 'rcDeep', 'cfWeak'] as const;
 
 // ---- ランダム生成 ----
 
@@ -79,6 +93,8 @@ export type GenerateOptions = {
   outs?: OutCount;
   /** 足・肩の種類を増やし、ライナー・フライも多めに出す */
   variety?: boolean;
+  /** 外野の間を抜ける・頭を越える長打（打者走者の判断も出る） */
+  longHit?: boolean;
 };
 
 const ARMS: Arm[] = ['weak', 'normal', 'normal', 'strong'];
@@ -87,7 +103,9 @@ const ARMS: Arm[] = ['weak', 'normal', 'normal', 'strong'];
 export function randomScenario(rng: Rng, opts: GenerateOptions = {}): Scenario {
   const outs: OutCount = opts.outs ?? (rng.int(0, 2) as OutCount);
   const r = rng.next();
-  const type: BallType = opts.variety
+  const type: BallType = opts.longHit
+    ? r < 0.6 ? 'liner' : 'over'
+    : opts.variety
     ? r < 0.5 ? 'ground' : r < 0.75 ? 'liner' : r < 0.9 ? 'fly_drop' : 'over'
     : r < 0.7 ? 'ground' : r < 0.9 ? 'liner' : 'fly_drop';
   const strength: Strength = rng.pick(['weak', 'normal', 'normal', 'hard'] as const);
@@ -106,7 +124,14 @@ export function randomScenario(rng: Rng, opts: GenerateOptions = {}): Scenario {
   }
   const depth = rng.pick(['shallow', 'normal', 'normal', 'deep'] as const);
   let landing: Scenario['battedBall']['landing'];
-  if (type !== 'ground') {
+  if (opts.longHit) {
+    // 左中間・右中間を抜ける、または外野手の頭を越える
+    angleDeg = rng.pick([-1, 1] as const) * rng.uniform(8, 20);
+    const fence = fenceDistance(angleDeg);
+    const dist = type === 'liner' ? rng.uniform(49, 58) : rng.uniform(60, fence - 6);
+    const hang = type === 'liner' ? rng.uniform(1.7, 2.1) : rng.uniform(2.7, 3.3);
+    landing = landingAt(angleDeg, dist, hang);
+  } else if (type !== 'ground') {
     const fence = fenceDistance(angleDeg);
     const dist =
       type === 'liner' ? rng.uniform(36, 50) : type === 'fly_drop' ? rng.uniform(34, 44) : rng.uniform(58, fence - 6);
@@ -114,7 +139,7 @@ export function randomScenario(rng: Rng, opts: GenerateOptions = {}): Scenario {
       type === 'liner' ? rng.uniform(1.3, 1.9) : type === 'fly_drop' ? rng.uniform(2.2, 2.8) : rng.uniform(2.6, 3.3);
     landing = landingAt(angleDeg, dist, hang);
   }
-  return {
+  const sc: Scenario = {
     id: `r${(rng.next() * 1e9) >>> 0}`,
     outs,
     runners: { first: false, second: true, third: false },
@@ -124,6 +149,13 @@ export function randomScenario(rng: Rng, opts: GenerateOptions = {}): Scenario {
     outfieldDepth: depth,
     seed: (rng.next() * 4294967296) >>> 0,
   };
+  sc.batterSpeed = rng.pick(['slow', 'normal', 'normal', 'fast'] as const);
+  return sc;
+}
+
+/** 打者走者の判断が出る長打か（外野手の捕り方で決まるので、1回シミュレーションして確かめる） */
+export function hasBatterDecision(sc: Scenario): boolean {
+  return simulatePlay(sc, [{ t: 0, kind: 'send' }], drawsFromSeed(sc.seed), { frames: false }).batter !== null;
 }
 
 export type RatedScenario = { scenario: Scenario; pSafe: number; threshold: number; answer: 'send' | 'stop' };
@@ -147,13 +179,14 @@ export function acceptsGap(difficulty: Difficulty, gap: number): boolean {
 export function generateRated(
   seed: number,
   difficulty: Difficulty,
-  want: { outs?: OutCount; answer?: 'send' | 'stop'; variety?: boolean } = {},
+  want: { outs?: OutCount; answer?: 'send' | 'stop'; variety?: boolean; longHit?: boolean } = {},
   mcRuns = 240,
 ): RatedScenario {
   const rng = createRng(seed);
   let fallback: RatedScenario | null = null;
   for (let i = 0; i < 80; i++) {
-    const sc = randomScenario(rng, { outs: want.outs, variety: want.variety });
+    const sc = randomScenario(rng, { outs: want.outs, variety: want.variety, longHit: want.longHit });
+    if (want.longHit && !hasBatterDecision(sc)) continue;
     const pSafe = baselinePSafe(sc, mcRuns, hashSeed(seed, i));
     const threshold = thresholdFor(sc);
     const gap = pSafe - threshold;
@@ -175,9 +208,10 @@ export function rateScenario(sc: Scenario, mcRuns = 400): RatedScenario {
 /** チャレンジ10問：0/1/2アウトと、回す／止めるがおおよそ半々になるように */
 export function generateChallenge(seed: number, difficulty: Difficulty, count = 10, variety = false): RatedScenario[] {
   const rng = createRng(seed);
-  const plan: { outs: OutCount; answer: 'send' | 'stop' }[] = [];
+  const plan: { outs: OutCount; answer: 'send' | 'stop'; longHit: boolean }[] = [];
   for (let i = 0; i < count; i++) {
-    plan.push({ outs: (i % 3) as OutCount, answer: i % 2 === 0 ? 'send' : 'stop' });
+    // 回す正解のうち3問は、打者走者の判断も出る長打にする
+    plan.push({ outs: (i % 3) as OutCount, answer: i % 2 === 0 ? 'send' : 'stop', longHit: i % 4 === 0 });
   }
   // 並びをシャッフル
   for (let i = plan.length - 1; i > 0; i--) {

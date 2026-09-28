@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { frameAt, type PlayTimeline } from '../../sim/play';
 import { Field } from './Field';
-import { signalAt, trailAt } from '../playback';
+import { callAt, signalAt, trailAt } from '../playback';
 
 /** 計算済みのプレーを再生する（リプレイ・もしも再生） */
 export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.ReactNode; onClose?: () => void }) {
@@ -36,8 +36,6 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
     setPlaying(true);
   };
 
-  const tCall = tl.events.find((e) => e.kind === 'call')?.t ?? tl.duration - 0.8;
-  const showCall = t >= tCall;
   return (
     <div className="replay">
       <div className="replay-head">
@@ -53,7 +51,7 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
         frame={frameAt(tl.frames, Math.min(t, tl.duration))}
         trail={trailAt(tl, t)}
         coach={signalAt(tl, t)}
-        call={showCall ? tl.result : null}
+        call={callAt(tl, t)}
         arms={tl.scenario.outfieldArm}
         className="replay-field"
       />

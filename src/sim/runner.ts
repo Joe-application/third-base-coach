@@ -1,8 +1,9 @@
-// 走者モデル（§4.5）。二塁走者の進み具合 g を時間刻みで計算する。
+// 走者モデル（§4.5）。走者の進み具合 g を時間刻みで計算する。
 // 走者の動きはコーチャーの合図（commands）だけで決まり、守備には依存しない。
+// 二塁走者（三塁で判断 → 本塁）と打者走者（二塁で判断 → 三塁）の両方に使う。
 
-import { RUNNER, SIM_DT, SIM_MAX_TIME } from './constants';
-import { G_HOME, G_THIRD } from './field';
+import { BATTER, RUNNER, SIM_DT, SIM_MAX_TIME } from './constants';
+import { G_B_FIRST, G_B_SECOND, G_B_THIRD, G_HOME, G_THIRD } from './field';
 import type { Command, Scenario } from './types';
 
 type Mode = 'run' | 'send' | 'brake' | 'hesitate' | 'overrunStop' | 'retreat' | 'stopped' | 'home';
@@ -14,10 +15,11 @@ export type RunnerTrace = {
   /** 各ステップのふくらみ（0 or 1） */
   bulge: number[];
   tStart: number;
-  /** 判断ウィンドウの開始（三塁の手前 12m） */
+  /** 判断ウィンドウの開始（判断する塁の手前 12m） */
   tWindowStart: number | null;
-  /** 三塁ベースに最初に届いた時刻 */
+  /** 判断する塁（二塁走者は三塁、打者走者は二塁）に最初に届いた時刻 */
   tThird: number | null;
+  /** 次の塁（二塁走者は本塁、打者走者は三塁）に着いた時刻 */
   tHome: number | null;
   hesitated: boolean;
   tHesitate: number | null;
@@ -34,28 +36,84 @@ export type RunnerTrace = {
   topSpeed: number;
 };
 
+/** 走者ごとの条件 */
+export type RunnerSpec = {
+  top: number;
+  tStart: number;
+  /** この時刻までは半分の速さ（ハーフウェイ） */
+  halfwayUntil: number;
+  /** 判断する塁の g */
+  gBase: number;
+  /** 次の塁の g */
+  gTarget: number;
+  /** 判断なしで回る塁の g（打者走者の一塁） */
+  autoTurns: number[];
+};
+
 export function runnerStartTime(sc: Scenario): number {
   if (sc.outs === 2) return RUNNER.reaction;
   if (sc.battedBall.type === 'ground') return RUNNER.reaction + RUNNER.groundWaitExtra;
   return RUNNER.reaction;
 }
 
+/** 二塁走者 */
 export function simulateRunner(
   sc: Scenario,
   commands: Command[],
   landingTime: number,
   record = true,
 ): RunnerTrace {
-  const top = RUNNER.topSpeed[sc.runnerSpeed];
+  return simulateRunnerSpec(
+    {
+      top: RUNNER.topSpeed[sc.runnerSpeed],
+      tStart: runnerStartTime(sc),
+      halfwayUntil: sc.outs < 2 && sc.battedBall.type !== 'ground' ? landingTime + RUNNER.halfwayReaction : 0,
+      gBase: G_THIRD,
+      gTarget: G_HOME,
+      autoTurns: [],
+    },
+    commands,
+    record,
+  );
+}
+
+/** 打者走者（長打のとき）。合図は bsend / bstop を send / stop として扱う */
+export function simulateBatter(sc: Scenario, commands: Command[], record = true): RunnerTrace {
+  const mapped: Command[] = [];
+  for (const c of commands) {
+    if (c.kind === 'bsend') mapped.push({ t: c.t, kind: 'send' });
+    else if (c.kind === 'bstop') mapped.push({ t: c.t, kind: 'stop' });
+  }
+  const tr = simulateRunnerSpec(
+    {
+      top: BATTER.topSpeed[sc.batterSpeed ?? 'normal'],
+      tStart: BATTER.reaction,
+      halfwayUntil: 0,
+      gBase: G_B_SECOND,
+      gTarget: G_B_THIRD,
+      autoTurns: [G_B_FIRST],
+    },
+    mapped,
+    record,
+  );
+  // 受け付けた合図を打者走者用の名前に戻す
+  tr.accepted = tr.accepted.map((c) => ({ t: c.t, kind: c.kind === 'send' ? 'bsend' : c.kind === 'stop' ? 'bstop' : c.kind }));
+  return tr;
+}
+
+export function simulateRunnerSpec(spec: RunnerSpec, commands: Command[], record = true): RunnerTrace {
+  const { top, tStart, halfwayUntil } = spec;
+  const B = spec.gBase;
+  const T = spec.gTarget;
   const dt = SIM_DT;
-  const tStart = runnerStartTime(sc);
-  const halfwayUntil =
-    sc.outs < 2 && sc.battedBall.type !== 'ground' ? landingTime + RUNNER.halfwayReaction : 0;
-  const zone0 = G_THIRD - RUNNER.turnZoneBefore;
-  const zone1 = G_THIRD + RUNNER.turnZoneAfter;
+  const zone0 = B - RUNNER.turnZoneBefore;
+  const zone1 = B + RUNNER.turnZoneAfter;
   const zoneLen = zone1 - zone0;
   const pathFactor = zoneLen / (zoneLen + RUNNER.turnExtraPath);
-  const gWindow = G_THIRD - RUNNER.windowDistance;
+  const gWindow = B - RUNNER.windowDistance;
+  /** 判断なしで回る塁のまわりでは、速さを落として膨らむ */
+  const autoTurn = (g: number) =>
+    spec.autoTurns.some((b) => g >= b - RUNNER.turnZoneBefore && g < b + RUNNER.turnZoneAfter);
   const cmds = [...commands].sort((a, b) => a.t - b.t);
 
   const tr: RunnerTrace = {
@@ -92,21 +150,21 @@ export function simulateRunner(
 
   const handle = (c: Command) => {
     if (c.kind === 'send') {
-      const ok = mode === 'run' || mode === 'hesitate' || (mode === 'brake' && g < G_THIRD);
+      const ok = mode === 'run' || mode === 'hesitate' || (mode === 'brake' && g < B);
       if (!ok) return;
       mode = 'send';
       rounding = g < zone1;
       tr.finalDecision = 'send';
       tr.accepted.push(c);
     } else if (c.kind === 'stop') {
-      if (mode === 'run' || (mode === 'send' && g < G_THIRD)) mode = 'brake';
-      else if (mode === 'hesitate' || (mode === 'send' && g <= G_THIRD + RUNNER.changeMindLimit))
+      if (mode === 'run' || (mode === 'send' && g < B)) mode = 'brake';
+      else if (mode === 'hesitate' || (mode === 'send' && g <= B + RUNNER.changeMindLimit))
         mode = 'overrunStop';
       else return;
       tr.finalDecision = 'stop';
       tr.accepted.push(c);
     } else if (c.kind === 'slide') {
-      if (mode === 'send' && g < G_HOME - RUNNER.slideDeadline && !tr.slideCalled) {
+      if (mode === 'send' && g < T - RUNNER.slideDeadline && !tr.slideCalled) {
         tr.slideCalled = true;
         tr.accepted.push(c);
       }
@@ -114,7 +172,7 @@ export function simulateRunner(
   };
 
   const afterStop = (t: number) => {
-    const overrun = g - G_THIRD;
+    const overrun = g - B;
     if (overrun >= RUNNER.retreatThreshold) {
       mode = 'retreat';
       retreatStart = t;
@@ -130,9 +188,14 @@ export function simulateRunner(
 
     switch (mode) {
       case 'run': {
-        approach(baseTarget(t));
-        g += v * dt;
-        if (g >= G_THIRD) {
+        if (autoTurn(g)) {
+          approach(Math.min(baseTarget(t), top * RUNNER.turnSpeedFactor));
+          g += v * pathFactor * dt;
+        } else {
+          approach(baseTarget(t));
+          g += v * dt;
+        }
+        if (g >= B) {
           // 判断がないまま三塁に着いた → 迷い
           mode = 'hesitate';
           tr.hesitated = true;
@@ -150,19 +213,19 @@ export function simulateRunner(
         }
         approach(target);
         g += v * pf * dt;
-        if (g >= G_HOME) {
-          tr.tHome = t - (g - G_HOME) / Math.max(0.1, v * pf);
-          g = G_HOME;
+        if (g >= T) {
+          tr.tHome = t - (g - T) / Math.max(0.1, v * pf);
+          g = T;
           mode = 'home';
         }
         break;
       }
       case 'brake': {
-        const rem = G_THIRD + RUNNER.stopTargetOverrun - g;
+        const rem = B + RUNNER.stopTargetOverrun - g;
         if (t >= tStart && (v * v) / (2 * RUNNER.brakeDecel) >= rem) v = Math.max(0, v - RUNNER.brakeDecel * dt);
         else approach(baseTarget(t));
         g += v * dt;
-        if (v === 0 && g >= G_THIRD - 0.05) afterStop(t);
+        if (v === 0 && g >= B - 0.05) afterStop(t);
         break;
       }
       case 'hesitate': {
@@ -184,8 +247,8 @@ export function simulateRunner(
         const target = top * RUNNER.retreatSpeedFactor;
         v = Math.min(target, v + RUNNER.accel * dt);
         g -= v * dt;
-        if (g <= G_THIRD) {
-          g = G_THIRD;
+        if (g <= B) {
+          g = B;
           v = 0;
           tr.retreat = { tStart: retreatStart, tBack: t, overrun: retreatOverrun };
           mode = 'stopped';
@@ -194,7 +257,7 @@ export function simulateRunner(
       }
       case 'stopped': {
         v = 0;
-        if (g > G_THIRD) g = Math.max(G_THIRD, g - RUNNER.walkBackSpeed * dt);
+        if (g > B) g = Math.max(B, g - RUNNER.walkBackSpeed * dt);
         break;
       }
       case 'home':
@@ -202,13 +265,13 @@ export function simulateRunner(
     }
 
     if (tr.tWindowStart === null && g >= gWindow) tr.tWindowStart = t;
-    if (tr.tThird === null && g >= G_THIRD) tr.tThird = t;
+    if (tr.tThird === null && g >= B) tr.tThird = t;
     if (record) {
       tr.g.push(g);
       tr.bulge.push(rounding ? 1 : 0);
     }
     if (mode === 'home') break;
-    if (mode === 'stopped' && g <= G_THIRD) break;
+    if (mode === 'stopped' && g <= B) break;
   }
   return tr;
 }

@@ -3,8 +3,8 @@
 import { memo } from 'react';
 import { FIELD } from '../../sim/constants';
 import { BASES, COACH_POSITION, fenceDistance, dirFromAngle } from '../../sim/field';
-import type { Arm, FielderId, Frame, OutfielderId, PlayResult, Vec } from '../../sim/types';
-import { R } from './Ruby';
+import type { Arm, FielderId, Frame, OutfielderId, Vec } from '../../sim/types';
+import type { Call } from '../playback';
 
 const NUMBERS: Record<FielderId, string> = {
   P: '1',
@@ -154,7 +154,10 @@ export type FieldProps = {
   trail?: Vec[];
   coach?: 'send' | 'stop' | null;
   pulse?: boolean;
-  call?: PlayResult | null;
+  /** 審判のコール */
+  call?: Call | null;
+  /** 打者走者の判断中：打者走者を光らせる */
+  batterPulse?: boolean;
   /** 表示範囲（m）。省略時はグラウンド全体 */
   view?: { x0: number; x1: number; y0: number; y1: number };
   className?: string;
@@ -162,7 +165,7 @@ export type FieldProps = {
 
 export const FULL_VIEW = { x0: -54, x1: 54, y0: -9, y1: 82 };
 
-export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, view = FULL_VIEW, className }: FieldProps) {
+export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
   const f = frame.fielders;
   const ball = frame.ball;
   const lift = ball.h * 0.45;
@@ -193,6 +196,9 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
           (['LF', 'CF', 'RF'] as OutfielderId[]).map((id) => (
             <ArmLabel key={id} p={f[id]} arm={arms === 'hidden' ? 'hidden' : arms[id]} />
           ))}
+        {batterPulse && (
+          <circle cx={frame.batter.x} cy={-frame.batter.y} r={3.4} className="coach-pulse" fill="none" stroke="var(--accent)" strokeWidth={0.6} />
+        )}
         <Player p={frame.batter} label="打" fill="var(--offense-2)" r={1.5} />
         <Player p={frame.runner} label="走" fill="var(--offense)" r={1.8} />
         <Coach signal={coach} pulse={pulse} />
@@ -201,17 +207,11 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
         <circle cx={ball.x} cy={-ball.y - lift} r={0.75 + ball.h * 0.03} fill="#fff" stroke="#b91c1c" strokeWidth={0.12} />
       </svg>
       {call && (
-        <div className={`ump-call ump-${call}`} key={call}>
-          <R>{CALL_TEXT[call]}</R>
+        <div className={`ump-call ump-${call.tone}`} key={call.text}>
+          {call.text}
         </div>
       )}
     </div>
   );
 }
 
-const CALL_TEXT: Record<PlayResult, string> = {
-  safe: 'セーフ！',
-  out_home: 'アウト！',
-  stop: 'ストップ',
-  out_third: 'アウト！',
-};

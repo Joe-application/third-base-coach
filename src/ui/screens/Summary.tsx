@@ -156,6 +156,11 @@ export function SummaryScreen() {
                 </td>
                 <td>
                   <R>{`${r.score.decision === 'send' ? '{回|まわ}す' : '{止|と}める'} ${GRADE_MARK[r.score.grade.grade]}`}</R>
+                  {r.score.batter && (
+                    <div className="small-text">
+                      <R>{`{打者|だしゃ}：${r.score.batter.decision === 'send' ? '{三塁|さんるい}へ' : '{二塁|にるい}ストップ'} ${GRADE_MARK[r.score.batter.grade.grade]}`}</R>
+                    </div>
+                  )}
                 </td>
                 <td>
                   <R>{RESULT_CALL[r.timeline.result]}</R>

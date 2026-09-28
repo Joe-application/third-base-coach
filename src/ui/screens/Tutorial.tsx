@@ -52,6 +52,8 @@ function Art({ kind }: { kind: (typeof TUTORIAL_PAGES)[number]['art'] }) {
       );
     case 'points':
       return <div className="tut-emoji">⚾ 👀 🧤 💪 🏃</div>;
+    case 'batter':
+      return <div className="tut-emoji">🏃💨 二塁 → 三塁？</div>;
     case 'fast':
       return <div className="tut-emoji">⚡ はやく、はっきり！</div>;
   }

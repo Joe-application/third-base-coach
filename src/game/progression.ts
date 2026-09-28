@@ -36,6 +36,11 @@ export function nextRank(stars: number): RankInfo | null {
   return RANKS.find((r) => r.minStars > stars) ?? null;
 }
 
+/** コンボを続けられるか：2人目（打者走者）の判断があるなら、それも ◎ */
+export function isPlayGreat(score: PlayScore): boolean {
+  return score.grade.grade === 'great' && (!score.batter || score.batter.grade.grade === 'great');
+}
+
 /** ◎ の連続数に応じた倍率（§6.3） */
 export function comboMultiplier(greatStreak: number): number {
   if (greatStreak >= 5) return 2.0;
@@ -73,6 +78,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'no_hesitation', name: '迷わない男', desc: '10プレー連続で「迷い」なし', icon: '⚡', test: (s) => s.noHesitateStreak >= 10 },
   { id: 'slide', name: '滑り込め！', desc: 'スライディングの合図でセーフを5回', icon: '⬇️', test: (s) => s.slideSafe >= 5 },
   { id: 'revenge', name: 'あの日のリベンジ', desc: '「あの日の場面」で回して ◎', icon: '🏆', test: (s) => s.anohiCleared },
+  { id: 'double_nice', name: 'ダブルでナイス判断', desc: '1プレーで2人とも ◎ を3回', icon: '✌️', test: (s) => s.doubleGreat >= 3 },
   { id: 'combo5', name: '5連続ナイス判断', desc: '◎ を5回続ける', icon: '🎯', test: (s) => s.bestCombo >= 5 },
 ];
 
@@ -114,6 +120,11 @@ export function applyPlay(
   if (tl.slideHelped) s.slideSafe++;
   s.bestCombo = Math.max(s.bestCombo, ctx.combo);
   if (ctx.presetId === 'anohi' && great && score.decision === 'send') s.anohiCleared = true;
+  if (score.batter) {
+    s.batterPlays++;
+    if (score.batter.grade.grade === 'great') s.batterGreat++;
+    if (great && score.batter.grade.grade === 'great') s.doubleGreat++;
+  }
 
   const newBadges = BADGES.filter((b) => !profile.badges.includes(b.id) && b.test(s));
   return {

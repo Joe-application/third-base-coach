@@ -28,12 +28,15 @@ export type Scenario = {
     landing?: { x: number; y: number; hangTime: number };
   };
   runnerSpeed: RunnerSpeed;
+  /** 打者走者の足（省略時はふつう） */
+  batterSpeed?: RunnerSpeed;
   outfieldArm: Record<OutfielderId, Arm>;
   outfieldDepth: Depth;
   seed: number;
 };
 
-export type CommandKind = 'send' | 'stop' | 'slide';
+/** send / stop / slide は二塁走者、bsend / bstop は打者走者（二塁を回るか）への合図 */
+export type CommandKind = 'send' | 'stop' | 'slide' | 'bsend' | 'bstop';
 /** コーチャーの合図。t はプレー開始（打球）からの秒 */
 export type Command = { t: number; kind: CommandKind };
 
@@ -44,6 +47,9 @@ export type PlayResult =
   | 'out_home' // 本塁アウト
   | 'stop' // 三塁ストップ
   | 'out_third'; // 帰塁が間に合わず三塁アウト
+
+/** 打者走者の結果：二塁で止まった／三塁セーフ／三塁アウト */
+export type BatterResult = 'second' | 'third' | 'out_third';
 
 export type SafeReason = 'beat_throw' | 'tag_missed' | 'wild_throw' | 'catcher_drop';
 
@@ -67,6 +73,11 @@ export type EventKind =
   /** 審判のコール（セーフ／アウト／ストップ） */
   | 'call'
   | 'throwThird'
+  /** 打者走者：判断ウィンドウ・二塁到達・中継が三塁へ投げた・三塁でのコール */
+  | 'batterWindow'
+  | 'batterSecond'
+  | 'cutToThird'
+  | 'batterCall'
   | 'result';
 
 export type PlayEvent = { t: number; kind: EventKind; detail?: string };

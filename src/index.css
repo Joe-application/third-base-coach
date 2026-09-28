@@ -388,6 +388,22 @@ input[type='checkbox'] {
   gap: 2px;
   word-break: keep-all;
 }
+.decide-caption {
+  font-size: 0.72em;
+  background: rgb(0 0 0 / 0.25);
+  border-radius: 99px;
+  padding: 0 10px;
+  margin-bottom: 2px;
+}
+/* 打者走者への合図のときは色を変えて、切り替わったことがわかるようにする */
+.decide.stop.batter {
+  background: #b45309;
+  border-color: #78350f;
+}
+.decide.send.batter {
+  background: #0369a1;
+  border-color: #0c4a6e;
+}
 .decide-icon {
   font-size: 1.8em;
   line-height: 1;
@@ -516,8 +532,7 @@ input[type='checkbox'] {
 .ump-safe {
   color: #fef08a;
 }
-.ump-out_home,
-.ump-out_third {
+.ump-out {
   color: #fecaca;
 }
 @keyframes pop {
@@ -677,6 +692,17 @@ input[type='checkbox'] {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+.score-sub {
+  font-size: 0.92rem;
+}
+.batter-section {
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 3px dashed var(--border);
+}
+.grade.small .grade-mark {
+  font-size: 2.6rem;
 }
 .score-total {
   border-top: 1px dashed var(--border);

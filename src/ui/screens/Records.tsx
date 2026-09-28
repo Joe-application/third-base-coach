@@ -59,6 +59,11 @@ export function RecordsScreen() {
             </div>
           );
         })}
+        {s.batterPlays > 0 && (
+          <p className="small-text">
+            <R>{`バッターランナー（{二塁|にるい}を{回|まわ}るか）：◎ ${Math.round((s.batterGreat / s.batterPlays) * 100)}%（${s.batterPlays}{回|かい}）`}</R>
+          </p>
+        )}
         <div className="tendency">
           {s.plays < 6 ? (
             <p className="muted">

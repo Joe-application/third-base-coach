@@ -20,6 +20,7 @@ type Form = {
   strength: Strength;
   distance: number;
   runnerSpeed: RunnerSpeed;
+  batterSpeed: RunnerSpeed;
   arms: Record<'LF' | 'CF' | 'RF', Arm>;
   depth: Depth;
   inning: number;
@@ -35,6 +36,7 @@ function toScenario(f: Form): Scenario {
     runners: { first: false, second: true, third: false },
     battedBall: { type: f.type, angleDeg: f.angle, strength: f.strength },
     runnerSpeed: f.runnerSpeed,
+    batterSpeed: f.batterSpeed,
     outfieldArm: { ...f.arms },
     outfieldDepth: f.depth,
     seed: 1,
@@ -60,6 +62,7 @@ function fromScenario(sc: Scenario): Form {
     strength: sc.battedBall.strength,
     distance: l ? Math.round(Math.hypot(l.x, l.y)) : 44,
     runnerSpeed: sc.runnerSpeed,
+    batterSpeed: sc.batterSpeed ?? 'normal',
     arms: { ...sc.outfieldArm },
     depth: sc.outfieldDepth,
     inning: sc.inning ?? 6,
@@ -185,6 +188,15 @@ export function SetupScreen() {
         <Seg
           value={f.runnerSpeed}
           onChange={(v) => set('runnerSpeed', v)}
+          options={(['slow', 'normal', 'fast'] as RunnerSpeed[]).map((v) => ({ v, label: LABEL.runnerSpeed[v] }))}
+        />
+
+        <label>
+          <R>{'バッターの{足|あし}'}</R>
+        </label>
+        <Seg
+          value={f.batterSpeed}
+          onChange={(v) => set('batterSpeed', v)}
           options={(['slow', 'normal', 'fast'] as RunnerSpeed[]).map((v) => ({ v, label: LABEL.runnerSpeed[v] }))}
         />
 

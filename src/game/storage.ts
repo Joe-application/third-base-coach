@@ -2,7 +2,7 @@
 
 import { EVAL } from '../sim/constants';
 import type { Grade, Timing, Verdict } from '../sim/evaluate';
-import type { OutCount, PlayResult, Scenario } from '../sim/types';
+import type { BatterResult, OutCount, PlayResult, Scenario } from '../sim/types';
 
 export const KEYS = {
   profiles: 'tbc:profiles',
@@ -43,6 +43,11 @@ export type Stats = {
   bestCombo: number;
   anohiCleared: boolean;
   tutorialDone: boolean;
+  /** 打者走者（二塁を回るか）の判断 */
+  batterPlays: number;
+  batterGreat: number;
+  /** 1プレーで2人とも ◎ */
+  doubleGreat: number;
 };
 
 export type Profile = {
@@ -70,6 +75,14 @@ export type HistoryEntry = {
   result: PlayResult;
   score: number;
   playedAt: number;
+  /** 打者走者の判断（あったときだけ） */
+  batter?: {
+    decision: 'send' | 'stop';
+    pSafe: number;
+    threshold: number;
+    grade: Grade;
+    result: BatterResult;
+  };
 };
 
 export type Settings = {
@@ -115,6 +128,9 @@ export const emptyStats = (): Stats => ({
   bestCombo: 0,
   anohiCleared: false,
   tutorialDone: false,
+  batterPlays: 0,
+  batterGreat: 0,
+  doubleGreat: 0,
 });
 
 // ---- 低レベル ----
@@ -179,6 +195,9 @@ function normalizeStats(v: unknown): Stats {
     bestCombo: num(s.bestCombo, 0),
     anohiCleared: bool(s.anohiCleared, e.anohiCleared),
     tutorialDone: bool(s.tutorialDone, e.tutorialDone),
+    batterPlays: num(s.batterPlays, 0),
+    batterGreat: num(s.batterGreat, 0),
+    doubleGreat: num(s.doubleGreat, 0),
   };
 }
 
