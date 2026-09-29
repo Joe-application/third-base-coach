@@ -14,7 +14,7 @@ export function Manager({ mood, text }: { mood: Grade; text: string }) {
         {/* つば：左右対称にして、目にかからない高さに置く */}
         <path d="M-16 -3.5 Q0 -0.5 16 -3.5 L16 -2 Q0 1.5 -16 -2 Z" fill="var(--cap-dark)" />
         <text x={0} y={-8} textAnchor="middle" fontSize={8} fontWeight={900} fill="#fff">
-          K
+          E
         </text>
         {/* 目 */}
         {mood === 'great' ? (
