@@ -43,6 +43,7 @@ export function PlayScreen() {
   const cmdsRef = useRef<Command[]>([]);
   const tRef = useRef(0);
   const hintShownRef = useRef(false);
+  const skippedRef = useRef(false);
   const [phase, setPhase] = useState<Phase>('intro');
   const [t, setT] = useState(0);
   /** 'lead' = 二塁走者のヒント、'batter' = 打者走者のヒント */
@@ -52,11 +53,13 @@ export function PlayScreen() {
   const decided = tl.runner.accepted.some((c) => c.kind !== 'slide');
   const signal = signalAt(tl, t);
 
-  const fireEvents = useCallback((prev: number, now: number) => {
+  /** callsOnly = スキップしたとき。審判のコールだけ鳴らす（音が重なりすぎないように） */
+  const fireEvents = useCallback((prev: number, now: number, callsOnly = false) => {
     const cur = tlRef.current;
     for (const e of cur.events) {
       // 0秒ちょうどのイベント（打球音）も鳴らす
       if ((e.t <= prev && !(prev === 0 && e.t === 0)) || e.t > now) continue;
+      if (callsOnly && e.kind !== 'call' && e.kind !== 'batterCall') continue;
       switch (e.kind) {
         case 'contact':
           sfx.bat();
@@ -206,7 +209,7 @@ export function PlayScreen() {
         profile: updated,
         record: { item, timeline: final, draws, score, multiplier, points, combo, newBadges },
       });
-    }, 1300);
+    }, skippedRef.current ? 900 : 1300);
     return () => clearTimeout(id);
     // 1回だけ実行したい
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,6 +265,25 @@ export function PlayScreen() {
   const canBSend = batterMode && !bDecided && !bAutoStoppedNow;
   const canBStop =
     batterMode && ((!bDecided && !bAutoStoppedNow) || (bSignal === 'bsend' && bg <= G_B_SECOND + RUNNER.changeMindLimit));
+
+  // もう押せる合図がなければ、最後まで飛ばせる
+  const leadDone =
+    autoStoppedNow ||
+    (decided && (signal === 'stop' || rg > G_THIRD + RUNNER.changeMindLimit || (r.tHome !== null && t >= r.tHome)));
+  const batterDone =
+    !bt ||
+    bAutoStoppedNow ||
+    (bDecided && (bSignal === 'bstop' || bg > G_B_SECOND + RUNNER.changeMindLimit || (bt.tHome !== null && t >= bt.tHome)));
+  const canSkip = phase === 'run' && leadDone && batterDone && !canSlide && t < tl.duration;
+
+  const skip = () => {
+    const end = tlRef.current.duration;
+    fireEvents(tRef.current, end, true);
+    tRef.current = end;
+    setT(end);
+    skippedRef.current = true;
+    setPhase('done');
+  };
 
   const stopBtn = batterMode
     ? { kind: 'bstop' as const, text: BUTTONS.bstop, enabled: canBStop, glow: bInWindow, chosen: bSignal === 'bstop' }
@@ -337,6 +359,17 @@ export function PlayScreen() {
             </button>
           )}
           {r.slideCalled && signal === 'send' && phase !== 'done' && <div className="slide-note">⬇ スライディング！</div>}
+          {canSkip && (
+            <button
+              className="skip-btn"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                skip();
+              }}
+            >
+              ⏭ スキップ
+            </button>
+          )}
           {phase === 'intro' && <IntroCard onStart={start} storyMode={item.presetId === 'anohi'} />}
         </div>
 

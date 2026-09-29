@@ -366,7 +366,8 @@ input[type='checkbox'] {
   display: grid;
   gap: 8px;
   padding: 0 8px 8px;
-  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  /* 横向き：ボタンは幅に上限をつけ、残りを全部フィールドに使う（iPad など横に広い画面でボタンが太くならないように） */
+  grid-template-columns: clamp(96px, 16vw, 200px) minmax(0, 1fr) clamp(96px, 16vw, 200px);
   grid-template-areas: 'stop field send';
   align-items: stretch;
 }
@@ -374,10 +375,9 @@ input[type='checkbox'] {
   grid-area: field;
   position: relative;
   height: 100%;
-  aspect-ratio: 108 / 91;
-  max-width: 100%;
-  justify-self: center;
+  width: 100%;
   min-height: 0;
+  min-width: 0;
 }
 .decide.stop {
   grid-area: stop;
@@ -478,6 +478,7 @@ input[type='checkbox'] {
   .play-field {
     height: auto;
     width: 100%;
+    aspect-ratio: 108 / 91;
     max-height: calc(100dvh - 150px);
   }
   .decide {
@@ -544,6 +545,19 @@ input[type='checkbox'] {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
   }
+}
+/* スキップ：左上（三塁側のファウルゾーン）。右上はスライディングのボタン */
+.skip-btn {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 4;
+  background: rgb(15 23 42 / 0.82);
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.5);
+  min-height: 52px;
+  padding: 8px 18px;
+  font-size: 1.05rem;
 }
 /* 本塁のクロスプレーを隠さないよう、右上（ファウルゾーン）に置く */
 .slide-btn {
