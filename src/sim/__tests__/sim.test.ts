@@ -10,10 +10,10 @@ import {
   scorePlay,
   thresholdFor,
 } from '../evaluate';
-import { G_THIRD } from '../field';
+import { G_HOME, G_THIRD } from '../field';
 import { outProbability, simulatePlay } from '../play';
 import { createRng, hashSeed } from '../rng';
-import { simulateRunner } from '../runner';
+import { simulateRunner, simulateRunnerSpec } from '../runner';
 import { generateChallenge, PRESETS, randomScenario } from '../scenario';
 import { planThrow } from '../throw';
 import type { Scenario } from '../types';
@@ -56,10 +56,20 @@ describe('simulatePlay', () => {
 describe('走者', () => {
   const runTime = (sc: Scenario) => simulateRunner(sc, [{ t: 0, kind: 'send' }], 0, false).tHome!;
 
-  it('二塁→本塁（リード3m・2アウト・普通・回す）は 7.8〜8.6 秒', () => {
-    const t = runTime(anohi);
+  it('二塁→本塁（リード3m・二次リードなし・反応0.2秒・普通・回す）は 7.8〜8.6 秒（仕様 §13）', () => {
+    const t = simulateRunnerSpec(
+      { top: RUNNER.topSpeed.normal, tStart: 0.2, halfwayUntil: 0, gBase: G_THIRD, gTarget: G_HOME, autoTurns: [], gStart: 0 },
+      [{ t: 0, kind: 'send' }],
+      false,
+    ).tHome!;
     expect(t).toBeGreaterThanOrEqual(7.8);
     expect(t).toBeLessThanOrEqual(8.6);
+  });
+
+  it('二次リードと早いスタートで、2アウトの二塁→本塁は 7.4〜8.0 秒', () => {
+    const t = runTime(anohi);
+    expect(t).toBeGreaterThanOrEqual(7.4);
+    expect(t).toBeLessThanOrEqual(8.0);
   });
 
   it('足「速い」は「普通」より 0.4 秒以上速い', () => {

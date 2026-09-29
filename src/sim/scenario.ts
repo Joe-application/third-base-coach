@@ -65,7 +65,7 @@ export const PRESETS: Record<string, Scenario> = {
     runners: { first: false, second: true, third: false },
     battedBall: { type: 'liner', angleDeg: 16, strength: 'hard', landing: landingAt(16, 55, 1.9) },
     runnerSpeed: 'normal',
-    batterSpeed: 'normal',
+    batterSpeed: 'fast',
     outfieldArm: allArms('normal'),
     outfieldDepth: 'normal',
     seed: 71,

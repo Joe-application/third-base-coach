@@ -48,6 +48,8 @@ export type RunnerSpec = {
   gTarget: number;
   /** 判断なしで回る塁の g（打者走者の一塁） */
   autoTurns: number[];
+  /** 打った瞬間の位置（二塁走者は二次リードの分だけ前にいる） */
+  gStart?: number;
 };
 
 export function runnerStartTime(sc: Scenario): number {
@@ -71,6 +73,7 @@ export function simulateRunner(
       gBase: G_THIRD,
       gTarget: G_HOME,
       autoTurns: [],
+      gStart: RUNNER.secondaryLead,
     },
     commands,
     record,
@@ -135,7 +138,7 @@ export function simulateRunnerSpec(spec: RunnerSpec, commands: Command[], record
   };
 
   let mode = 'run' as Mode;
-  let g = 0;
+  let g = spec.gStart ?? 0;
   let v = 0;
   let rounding = false;
   let ci = 0;
