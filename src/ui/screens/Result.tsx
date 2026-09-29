@@ -65,7 +65,7 @@ export function ResultScreen() {
                 <R>{VERDICT_LABEL[score.grade.verdict]}</R>
               </div>
               <div className="muted">
-                <R>{`あなたの{判断|はんだん}：${score.decision === 'send' ? '{回|まわ}せ' : '{止|と}まれ'}${score.timing === 'hesitate' ? '（{迷|まよ}い）' : ''} → ${RESULT_CALL[tl.result]}`}</R>
+                <R>{`あなたの{判断|はんだん}：${score.decision === 'send' ? '{回|まわ}れ' : '{止|と}まれ'}${score.timing === 'hesitate' ? '（{迷|まよ}い）' : ''} → ${RESULT_CALL[tl.result]}`}</R>
               </div>
             </div>
           </div>

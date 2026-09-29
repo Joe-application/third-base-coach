@@ -124,7 +124,7 @@ export const RUNNER = {
   walkBackSpeed: 1.5,
   /** 判断ウィンドウ：三塁の手前この距離で始まる */
   windowDistance: 12,
-  /** 「回せ」のあとで「止まれ」に変えられるのは三塁を過ぎてこの距離まで */
+  /** 「回れ」のあとで「止まれ」に変えられるのは三塁を過ぎてこの距離まで */
   changeMindLimit: 8,
   /** スライディングの合図は本塁の手前この距離まで */
   slideDeadline: 8,

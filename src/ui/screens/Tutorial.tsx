@@ -29,7 +29,7 @@ function Art({ kind }: { kind: (typeof TUTORIAL_PAGES)[number]['art'] }) {
               <line x1={0} y1={0} x2={0} y2={-9} stroke="var(--coach)" strokeWidth={1.8} strokeLinecap="round" />
             </g>
             <text y={12} textAnchor="middle" fontSize={4} fill="currentColor">
-              回せ
+              回れ
             </text>
           </g>
           <g transform="translate(14,4)">

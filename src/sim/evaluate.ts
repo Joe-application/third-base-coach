@@ -43,7 +43,7 @@ export function knownFactsAt(actual: PlayTimeline, tD: number): KnownFacts {
 export type PSafeEstimate = { pSafe: number; safe: number; n: number };
 
 /**
- * 時刻 tD に「回せ」を出した場合の本塁セーフ確率。
+ * 時刻 tD に「回れ」を出した場合の本塁セーフ確率。
  * すでに起きた事象は actualDraws の値に固定し、それ以外を引き直す。
  */
 export function estimatePSafe(
@@ -241,7 +241,7 @@ function scoreBatter(timeline: PlayTimeline, draws: Draws, mcRuns: number): Batt
 
 /**
  * 1プレーの採点。timeline は最終的な合図で計算したもの。
- * 判断は最後に受け付けた「回せ／止まれ」、なければ迷い（三塁到達時点の自動ストップ）。
+ * 判断は最後に受け付けた「回れ／止まれ」、なければ迷い（三塁到達時点の自動ストップ）。
  */
 export function scorePlay(
   timeline: PlayTimeline,
