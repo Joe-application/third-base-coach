@@ -63,7 +63,7 @@ export const PRESETS: Record<string, Scenario> = {
     name: '右中間を深々と破る打球',
     outs: 1,
     runners: { first: false, second: true, third: false },
-    battedBall: { type: 'liner', angleDeg: 16, strength: 'hard', landing: landingAt(16, 55, 1.9) },
+    battedBall: { type: 'liner', angleDeg: 16, strength: 'hard', landing: landingAt(16, 58, 1.9) },
     runnerSpeed: 'normal',
     batterSpeed: 'fast',
     outfieldArm: allArms('normal'),

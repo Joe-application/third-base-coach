@@ -70,12 +70,12 @@ export const FIELDER = {
   /** 移動がこれ未満なら「正面（前進）」扱い */
   minMoveForAngle: 2,
   /** 【調整】捕球〜送球の持ち替え時間 [min, max]。仕様 0.8〜1.0 / 1.1〜1.4 / 1.5〜2.0。
-   *  最初は学童向けに 1.5〜2.1 / 1.8〜2.4 / 2.2〜2.9 まで長くしたが、「実際はそんなにかからない」
-   *  とのことで短くした（2026-09-29）。その分、走者の二次リードとスタートを早くして釣り合わせた */
+   *  最初は学童向けに長くしたが、「実際はそんなにかからない」とのことで 2026-09-29 に2回短くした
+   *  （1.5〜2.1 → 1.1〜1.5 → いまの値）。そのぶん送球の速さ（ARM）を学童らしく遅くして釣り合わせた */
   hold: {
-    forward: [1.1, 1.5],
-    side: [1.4, 1.8],
-    back: [1.8, 2.4],
+    forward: [0.55, 0.75],
+    side: [0.7, 0.9],
+    back: [0.9, 1.2],
   } as Record<'forward' | 'side' | 'back', [number, number]>,
   fumbleProb: 0.08,
   fumbleProbHardGround: 0.12,
@@ -154,10 +154,12 @@ export const BATTER = {
 };
 
 // ---- 送球（§4.6） ----
+/** 【調整】仕様は 弱い 18m/s・45m／普通 21m/s・55m／強い 24m/s・65m。
+ *  持ち替えを短くしたぶん、小6の外野手らしく少し遅く・短くした（普通 = 約 68km/h） */
 export const ARM: Record<Arm, { vLine: number; dMax: number; sigmaFactor: number }> = {
-  weak: { vLine: 18, dMax: 45, sigmaFactor: 1.2 },
-  normal: { vLine: 21, dMax: 55, sigmaFactor: 1.0 },
-  strong: { vLine: 24, dMax: 65, sigmaFactor: 0.8 },
+  weak: { vLine: 16, dMax: 41, sigmaFactor: 1.2 },
+  normal: { vLine: 19, dMax: 50, sigmaFactor: 1.0 },
+  strong: { vLine: 22, dMax: 59, sigmaFactor: 0.8 },
 };
 
 export const THROW = {
@@ -179,7 +181,8 @@ export const THROW = {
   /** 【調整】距離が d_max のこの割合を超えるとワンバウンド送球とみなす */
   bounceRatio: 0.8,
   /** 中継の持ち替え時間 */
-  relayHold: [0.8, 1.2] as [number, number],
+  /** 【調整】仕様 0.8〜1.2。「中継の持ち替えももっと短い」とのことで半分に */
+  relayHold: [0.4, 0.6] as [number, number],
   /** 中継時の送球ミス（お手玉など）の確率と遅れ */
   relayErrorProb: 0.1,
   relayErrorExtra: [0.5, 1.5] as [number, number],
