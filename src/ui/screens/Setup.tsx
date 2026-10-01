@@ -15,6 +15,8 @@ const DIST: Record<Exclude<BallType, 'ground'>, number> = { liner: 44, fly_drop:
 
 type Form = {
   outs: OutCount;
+  /** ランナーがいる塁 */
+  runnerOn: 'second' | 'first';
   type: BallType;
   angle: number;
   strength: Strength;
@@ -33,7 +35,7 @@ function toScenario(f: Form): Scenario {
     id: 'free',
     name: '自由練習',
     outs: f.outs,
-    runners: { first: false, second: true, third: false },
+    runners: f.runnerOn === 'first' ? { first: true, second: false, third: false } : { first: false, second: true, third: false },
     battedBall: { type: f.type, angleDeg: f.angle, strength: f.strength },
     runnerSpeed: f.runnerSpeed,
     batterSpeed: f.batterSpeed,
@@ -57,6 +59,7 @@ function fromScenario(sc: Scenario): Form {
   const l = sc.battedBall.landing;
   return {
     outs: sc.outs,
+    runnerOn: !sc.runners.second && sc.runners.first ? 'first' : 'second',
     type: sc.battedBall.type,
     angle: sc.battedBall.angleDeg,
     strength: sc.battedBall.strength,
@@ -130,6 +133,16 @@ export function SetupScreen() {
       <div className="form-grid">
         <label>アウト</label>
         <Seg value={f.outs} onChange={(v) => set('outs', v)} options={[0, 1, 2].map((o) => ({ v: o as OutCount, label: `${o}` }))} />
+
+        <label>ランナー</label>
+        <Seg
+          value={f.runnerOn}
+          onChange={(v) => set('runnerOn', v)}
+          options={[
+            { v: 'second', label: '{二塁|にるい}' },
+            { v: 'first', label: '{一塁|いちるい}' },
+          ]}
+        />
 
         <label>
           <R>{'{打球|だきゅう}'}</R>

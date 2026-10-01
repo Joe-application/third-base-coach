@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RUNNER } from '../../sim/constants';
 import { drawsFromSeed } from '../../sim/draws';
-import { decisionWindow, scorePlay } from '../../sim/evaluate';
-import { G_B_SECOND, G_HOME, G_THIRD } from '../../sim/field';
+import { decisionWindow, scorePlay, windowOpen } from '../../sim/evaluate';
+import { G_B_SECOND, leadGeom } from '../../sim/field';
 import { frameAt, simulatePlay } from '../../sim/play';
 import { runnerGAt } from '../../sim/runner';
 import type { Command, CommandKind } from '../../sim/types';
@@ -17,7 +17,7 @@ import { callAt, signalAt, trailAt } from '../playback';
 import { useApp } from '../state';
 import { playVoice } from '../voice';
 
-type Phase = 'intro' | 'run' | 'hint' | 'done';
+type Phase = 'intro' | 'run' | 'done';
 
 function ButtonLabel({ text, caption }: { text: string; caption?: string }) {
   const [icon, ...rest] = text.split(' ');
@@ -37,18 +37,17 @@ export function PlayScreen() {
   const sc = item.scenario;
   const draws = useMemo(() => drawsFromSeed(sc.seed), [sc.seed]);
   const win = useMemo(() => decisionWindow(sc), [sc]);
+  const geom = useMemo(() => leadGeom(sc), [sc]);
 
   const [tl, setTl] = useState(() => simulatePlay(sc, [], draws));
   const tlRef = useRef(tl);
   const cmdsRef = useRef<Command[]>([]);
   const tRef = useRef(0);
-  const hintShownRef = useRef(false);
   const skippedRef = useRef(false);
   const [phase, setPhase] = useState<Phase>('intro');
   const [t, setT] = useState(0);
-  /** 'lead' = 二塁走者のヒント、'batter' = 打者走者のヒント */
-  const [hintFor, setHintFor] = useState<'lead' | 'batter'>('lead');
-  const batterHintShownRef = useRef(false);
+  /** 合図を出した瞬間のダメ出し（はやすぎ） */
+  const [flash, setFlash] = useState<string | null>(null);
 
   const decided = tl.runner.accepted.some((c) => c.kind !== 'slide');
   const signal = signalAt(tl, t);
@@ -122,29 +121,17 @@ export function PlayScreen() {
       last = now;
       const prev = tRef.current;
       let nt = prev + dt;
-      const undecided = !tlRef.current.runner.accepted.some((c) => c.kind !== 'slide');
-      if (session.hint && !hintShownRef.current && undecided && nt >= win.tWindowStart) {
-        nt = win.tWindowStart;
-        hintShownRef.current = true;
-        fireEvents(prev, nt);
-        tRef.current = nt;
-        setT(nt);
-        setHintFor('lead');
-        setPhase('hint');
-        return;
+      // 現実の試合は待ってくれない：締め切りを過ぎても合図がなければ、その場で ×（ブザー）
+      const cur = tlRef.current;
+      const undecided = !cur.runner.accepted.some((c) => c.kind !== 'slide');
+      if (undecided && prev < win.tDeadline && nt >= win.tDeadline) {
+        sfx.buzzer();
+        vibrate([60, 40, 60]);
       }
-      // 打者走者の判断ウィンドウでも一度止める
-      const b = tlRef.current.batter;
-      const bWin = b?.eligible ? b.trace.tWindowStart : null;
-      if (session.hint && !batterHintShownRef.current && bWin !== null && b!.trace.accepted.length === 0 && nt >= bWin) {
-        nt = bWin;
-        batterHintShownRef.current = true;
-        fireEvents(prev, nt);
-        tRef.current = nt;
-        setT(nt);
-        setHintFor('batter');
-        setPhase('hint');
-        return;
+      const b = cur.batter?.eligible ? cur.batter.trace : null;
+      if (b && b.tDeadline !== null && b.accepted.length === 0 && prev < b.tDeadline && nt >= b.tDeadline) {
+        sfx.buzzer();
+        vibrate([60, 40, 60]);
       }
       fireEvents(prev, nt);
       tRef.current = nt;
@@ -157,7 +144,7 @@ export function PlayScreen() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [phase, session.speed, session.hint, win.tWindowStart, fireEvents]);
+  }, [phase, session.speed, win.tDeadline, fireEvents]);
 
 
   // 終わったら採点して結果画面へ
@@ -215,8 +202,12 @@ export function PlayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  const press = (kind: CommandKind) => {
+  const press = (kind: CommandKind | 'skip') => {
     if (phase === 'intro' || phase === 'done') return;
+    if (kind === 'skip') {
+      skip();
+      return;
+    }
     unlockAudio();
     const cmd: Command = { t: tRef.current, kind };
     const next = simulatePlay(sc, [...cmdsRef.current, cmd], draws);
@@ -226,52 +217,67 @@ export function PlayScreen() {
     tlRef.current = next;
     setTl(next);
     sfx.signal();
+    if ((kind === 'send' || kind === 'stop') && !cmdsRef.current.slice(0, -1).some((c) => c.kind === 'send' || c.kind === 'stop')) {
+      if (cmd.t < windowOpen(win, next.fielding.tCatch)) {
+        // はやすぎ：合図はそのまま通るが、その場でダメ出し
+        sfx.buzzer();
+        setFlash('❌ はやすぎ！');
+        setTimeout(() => setFlash(null), 1500);
+      }
+    }
     // コーチャーの声：押した瞬間に出す
     const lines = { send: VOICE.send, stop: VOICE.stop, slide: VOICE.slide, bsend: VOICE.bsend, bstop: VOICE.bstop }[kind];
     playVoice(kind, lines[0]);
     vibrate(kind === 'slide' ? 20 : 40);
-    if (phase === 'hint') setPhase('run');
   };
 
   const start = () => {
     unlockAudio();
     if (phase === 'intro') setPhase('run');
-    else if (phase === 'hint') setPhase('run');
   };
 
   const frame = frameAt(tl.frames, Math.min(t, tl.duration));
   const rg = runnerGAt(tl.runner, t).g;
-  const inWindow = t >= win.tWindowStart && !decided && phase !== 'intro';
   const r = tl.runner;
+  const active = phase === 'run';
+  // 判断してよい時間：開く（捕球の少し前／三塁の手前12m）〜締め切り（三塁の手前3m）
+  const tOpen = windowOpen(win, tl.fielding.tCatch);
+  const beforeDeadline = t <= win.tDeadline;
+  const inWindow = active && !decided && t >= tOpen && beforeDeadline;
+  const leadLate = active && !decided && !beforeDeadline;
+  // はやすぎても押せる（その場でダメ出し）。締め切りを過ぎたら押せない
+  const canSend = active && !decided && beforeDeadline;
+  const canStop =
+    active && ((!decided && beforeDeadline) || (signal === 'send' && rg <= geom.gThird + RUNNER.changeMindLimit));
   // タイムラインは未来まで計算済みなので、「今」までに起きたかで判定する
   const autoStoppedNow = r.autoStopped && r.tHesitate !== null && t >= r.tHesitate + RUNNER.hesitateDuration;
-  const active = phase === 'run' || phase === 'hint';
-  const canSend = active && !decided && !autoStoppedNow;
-  const canStop =
-    active && ((!decided && !autoStoppedNow) || (signal === 'send' && rg <= G_THIRD + RUNNER.changeMindLimit));
-  const canSlide = signal === 'send' && !r.slideCalled && rg < G_HOME - RUNNER.slideDeadline && phase !== 'done';
+  const canSlide = signal === 'send' && !r.slideCalled && rg < geom.gHome - RUNNER.slideDeadline && phase !== 'done';
   const hideTraits = session.hideTraits;
 
   // 打者走者（長打で二塁走者を回したとき）：二塁の手前 12m から、ボタンが打者走者用に変わる
   const bp = tl.batter?.eligible ? tl.batter : null;
   const bt = bp?.trace;
-  const leadLocked = r.tHome !== null ? t >= r.tHome || rg > G_THIRD + RUNNER.changeMindLimit : false;
+  const leadLocked = r.tHome !== null ? t >= r.tHome || rg > geom.gThird + RUNNER.changeMindLimit : false;
   const batterMode = !!bt && bt.tWindowStart !== null && t >= bt.tWindowStart && leadLocked && active;
   const bDecided = !!bt && bt.accepted.some((c) => c.t <= t);
   const bSignal = bt?.accepted.filter((c) => c.t <= t).at(-1)?.kind ?? null;
   const bAutoStoppedNow = !!bt && bt.autoStopped && bt.tHesitate !== null && t >= bt.tHesitate + RUNNER.hesitateDuration;
   const bg = bt ? runnerGAt(bt, t).g : 0;
-  const bInWindow = batterMode && !bDecided && !bAutoStoppedNow;
-  const canBSend = batterMode && !bDecided && !bAutoStoppedNow;
+  const bBeforeDeadline = !!bt && bt.tDeadline !== null && t <= bt.tDeadline;
+  const bInWindow = batterMode && !bDecided && bBeforeDeadline;
+  const batterLate = !!bt && active && !bDecided && bt.tDeadline !== null && t > bt.tDeadline;
+  const canBSend = batterMode && !bDecided && bBeforeDeadline;
   const canBStop =
-    batterMode && ((!bDecided && !bAutoStoppedNow) || (bSignal === 'bsend' && bg <= G_B_SECOND + RUNNER.changeMindLimit));
+    batterMode && ((!bDecided && bBeforeDeadline) || (bSignal === 'bsend' && bg <= G_B_SECOND + RUNNER.changeMindLimit));
 
   // もう押せる合図がなければ、最後まで飛ばせる
   const leadDone =
+    leadLate ||
     autoStoppedNow ||
-    (decided && (signal === 'stop' || rg > G_THIRD + RUNNER.changeMindLimit || (r.tHome !== null && t >= r.tHome)));
+    (decided && (signal === 'stop' || rg > geom.gThird + RUNNER.changeMindLimit || (r.tHome !== null && t >= r.tHome)));
   const batterDone =
     !bt ||
+    batterLate ||
     bAutoStoppedNow ||
     (bDecided && (bSignal === 'bstop' || bg > G_B_SECOND + RUNNER.changeMindLimit || (bt.tHome !== null && t >= bt.tHome)));
   const canSkip = phase === 'run' && leadDone && batterDone && !canSlide && t < tl.duration;
@@ -288,39 +294,51 @@ export function PlayScreen() {
   const stopBtn = batterMode
     ? { kind: 'bstop' as const, text: BUTTONS.bstop, enabled: canBStop, glow: bInWindow, chosen: bSignal === 'bstop' }
     : { kind: 'stop' as const, text: BUTTONS.stop, enabled: canStop, glow: inWindow, chosen: signal === 'stop' };
-  const sendBtn = batterMode
-    ? { kind: 'bsend' as const, text: BUTTONS.bsend, enabled: canBSend, glow: bInWindow, chosen: bSignal === 'bsend' }
-    : { kind: 'send' as const, text: BUTTONS.send, enabled: canSend, glow: inWindow, chosen: signal === 'send' };
+  // もう押せる合図がなければ、右のボタンが「スキップ」になる（下の方にあって押しやすい）
+  const sendBtn = canSkip
+    ? { kind: 'skip' as const, text: BUTTONS.skip, enabled: true, glow: false, chosen: false }
+    : batterMode
+      ? { kind: 'bsend' as const, text: BUTTONS.bsend, enabled: canBSend, glow: bInWindow, chosen: bSignal === 'bsend' }
+      : { kind: 'send' as const, text: BUTTONS.send, enabled: canSend, glow: inWindow, chosen: signal === 'send' };
+
+  // 判断できる残り時間（タイミングの練習用のバー）
+  const timingBar = inWindow
+    ? Math.max(0, (win.tDeadline - t) / Math.max(0.3, win.tDeadline - tOpen))
+    : bInWindow && bt?.tDeadline != null && bt.tWindowStart != null
+      ? Math.max(0, (bt.tDeadline - t) / Math.max(0.3, bt.tDeadline - bt.tWindowStart))
+      : null;
+  const lateText = leadLate ? '❌ おそい！' : batterLate ? '❌ おそい！（バッターランナー）' : null;
+  const showHint = session.hint && (inWindow || bInWindow);
 
   return (
     <div className="play">
-      {phase === 'hint' ? (
-        // フィールドを隠さないように、上のバーにヒントを出す
-        <div className="hud hint-strip" onClick={start} role="button">
+      {showHint ? (
+        // 見習いのうちは、判断のときに上のバーにヒントを出す（止まらない）
+        <div className="hud hint-strip">
           <strong>
-            ⏸ <R>{hintFor === 'batter' ? HINT.batterTitle : HINT.title}</R>
+            <R>{bInWindow ? HINT.batterTitle : HINT.title}</R>
           </strong>
-          {(hintFor === 'batter' ? HINT.batterPoints(sc) : HINT.points(sc)).map((p) => (
+          {(bInWindow ? HINT.batterPoints(sc) : HINT.points(sc)).map((p) => (
             <span key={p} className="hint-item">
               <R>{p}</R>
             </span>
           ))}
         </div>
       ) : (
-      <div className="hud">
-        <button className="ghost small" onClick={() => dispatch({ type: 'go', screen: 'home' })} aria-label="やめる">
-          ✕
-        </button>
-        <span className="hud-item">
-          <R>{INTRO.runner}</R>
-        </span>
-        {session.items.length > 1 && (
-          <span className="hud-item muted">
-            {session.index + 1}/{session.items.length}
+        <div className="hud">
+          <button className="ghost small" onClick={() => dispatch({ type: 'go', screen: 'home' })} aria-label="やめる">
+            ✕
+          </button>
+          <span className="hud-item">
+            <R>{INTRO.runnerOn(sc)}</R>
           </span>
-        )}
-        {session.combo >= 2 && <span className="hud-item combo">🔥×{session.combo}</span>}
-      </div>
+          {session.items.length > 1 && (
+            <span className="hud-item muted">
+              {session.index + 1}/{session.items.length}
+            </span>
+          )}
+          {session.combo >= 2 && <span className="hud-item combo">🔥×{session.combo}</span>}
+        </div>
       )}
 
       <div className="play-stage">
@@ -359,29 +377,24 @@ export function PlayScreen() {
             </button>
           )}
           {r.slideCalled && signal === 'send' && phase !== 'done' && <div className="slide-note">⬇ スライディング！</div>}
-          {canSkip && (
-            <button
-              className="skip-btn"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                skip();
-              }}
-            >
-              ⏭ スキップ
-            </button>
+          {(flash || lateText) && <div className="judge-flash">{flash ?? lateText}</div>}
+          {timingBar !== null && (
+            <div className="timing-bar" aria-label="判断できる残り時間">
+              <div style={{ width: `${Math.round(timingBar * 100)}%` }} />
+            </div>
           )}
           {phase === 'intro' && <IntroCard onStart={start} storyMode={item.presetId === 'anohi'} />}
         </div>
 
         <button
-          className={`decide send ${sendBtn.glow ? 'glow' : ''} ${sendBtn.chosen ? 'chosen' : ''} ${batterMode ? 'batter' : ''}`}
+          className={`decide send ${sendBtn.glow ? 'glow' : ''} ${sendBtn.chosen ? 'chosen' : ''} ${batterMode && !canSkip ? 'batter' : ''} ${canSkip ? 'skip' : ''}`}
           disabled={!sendBtn.enabled}
           onPointerDown={(e) => {
             e.preventDefault();
             press(sendBtn.kind);
           }}
         >
-          <ButtonLabel text={sendBtn.text} caption={batterMode ? BUTTONS.batterCaption : undefined} />
+          <ButtonLabel text={sendBtn.text} caption={batterMode && !canSkip ? BUTTONS.batterCaption : undefined} />
         </button>
       </div>
     </div>
@@ -401,7 +414,7 @@ export function PlayScreen() {
               <OutsDots outs={sc.outs} big />
               <strong>{LABEL.outs(sc.outs)}</strong>
               <span>
-                <R>{INTRO.runner}</R>
+                <R>{INTRO.runnerOn(sc)}</R>
                 {sc.inning !== undefined && (
                   <>
                     {' ・ '}

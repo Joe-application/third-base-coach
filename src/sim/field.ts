@@ -1,5 +1,5 @@
 import { FIELD, FIELDER_POSITIONS, OUTFIELD_DEPTH_SHIFT, RUNNER } from './constants';
-import type { Depth, FielderId, Vec } from './types';
+import type { Depth, FielderId, Scenario, Vec } from './types';
 
 export const vec = (x: number, y: number): Vec => ({ x, y });
 export const add = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
@@ -82,6 +82,47 @@ export function runnerPosition(g: number, bulge: number): Vec {
     }
   }
   return p;
+}
+
+// ---- 一塁走者（長打で三塁まで来て、本塁へ回すか止めるか） ----
+// g は「一塁のリード位置 → 二塁 → 三塁 → 本塁」の折れ線に沿った距離。
+export const LEAD_POINT_FIRST = lerp(BASES.first, BASES.second, RUNNER.lead / FIELD.baseDistance);
+export const G1_SECOND = FIELD.baseDistance - RUNNER.lead;
+export const G1_THIRD = G1_SECOND + FIELD.baseDistance;
+export const G1_HOME = G1_THIRD + FIELD.baseDistance;
+const OUTWARD_AT_SECOND = vec(0, 1);
+
+export function runnerFromFirstPosition(g: number, bulge: number): Vec {
+  const d = FIELD.baseDistance;
+  let p: Vec;
+  if (g <= G1_SECOND) p = lerp(LEAD_POINT_FIRST, BASES.second, Math.max(0, g) / G1_SECOND);
+  else if (g <= G1_THIRD) p = lerp(BASES.second, BASES.third, (g - G1_SECOND) / d);
+  else p = lerp(BASES.third, BASES.home, Math.min(1, (g - G1_THIRD) / d));
+  const bump = (base: number, dir: Vec, k: number) => {
+    const z0 = base - RUNNER.turnZoneBefore;
+    const z1 = base + RUNNER.turnZoneAfter;
+    if (g > z0 && g < z1) p = add(p, scale(dir, RUNNER.turnExtraPath * k * Math.sin((Math.PI * (g - z0)) / (z1 - z0))));
+  };
+  bump(G1_SECOND, OUTWARD_AT_SECOND, 1); // 二塁はいつも回る
+  if (bulge > 0) bump(G1_THIRD, OUTWARD_AT_THIRD, bulge);
+  return p;
+}
+
+/** 先頭の走者（コーチャーが三塁で判断する走者）の道のり */
+export type LeadGeom = {
+  /** 一塁走者なら true */
+  fromFirst: boolean;
+  gThird: number;
+  gHome: number;
+  /** 判断なしで回る塁（一塁走者の二塁） */
+  autoTurns: number[];
+  pos: (g: number, bulge: number) => Vec;
+};
+
+export function leadGeom(sc: Scenario): LeadGeom {
+  if (!sc.runners.second && sc.runners.first)
+    return { fromFirst: true, gThird: G1_THIRD, gHome: G1_HOME, autoTurns: [G1_SECOND], pos: runnerFromFirstPosition };
+  return { fromFirst: false, gThird: G_THIRD, gHome: G_HOME, autoTurns: [], pos: runnerPosition };
 }
 
 // 打者走者の進み具合 g は「本塁 → 一塁 → 二塁 → 三塁」の折れ線に沿った距離。

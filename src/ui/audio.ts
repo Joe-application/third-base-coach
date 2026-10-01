@@ -140,6 +140,13 @@ export const sfx = {
     if (!c) return;
     swell(c, 1.2, 0.35, 420, 0.3);
   },
+  /** ブー（はやすぎ・おそい） */
+  buzzer() {
+    const c = ac();
+    if (!c) return;
+    tone(c, 140, 0.45, 0.25, 'square');
+    tone(c, 147, 0.45, 0.2, 'square');
+  },
   soft() {
     const c = ac();
     if (!c) return;

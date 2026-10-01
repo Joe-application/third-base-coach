@@ -13,7 +13,7 @@ import {
   dist,
   fielderStart,
   lerp,
-  runnerPosition,
+  leadGeom,
   vec,
 } from './field';
 import { chaserPosition, findCatch, fumbleProbability, holdTime, runDistance, type CatchPlan } from './fielder';
@@ -274,6 +274,7 @@ function accelRun(tau: number, top: number, a: number): number {
 
 function buildFrames(tl: PlayTimeline): Frame[] {
   const { scenario, ball, fielding: f, throwPlan: th, runner, thirdPlay } = tl;
+  const geom = leadGeom(scenario);
   const depth = scenario.outfieldDepth;
   const starts = {} as Record<FielderId, Vec>;
   for (const id of ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'] as FielderId[])
@@ -420,7 +421,7 @@ function buildFrames(tl: PlayTimeline): Frame[] {
     frames.push({
       t,
       ball: ballAt(t),
-      runner: runnerPosition(rg.g, rg.bulge),
+      runner: geom.pos(rg.g, rg.bulge),
       batter: batterAt(t),
       fielders: fieldersAt(t),
     });

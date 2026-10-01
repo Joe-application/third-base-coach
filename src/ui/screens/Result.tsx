@@ -9,8 +9,10 @@ import {
   COMBO_TEXT,
   GRADE_MARK,
   managerComment,
+  managerMood,
   RESULT_CALL,
   resultMessage,
+  timingMessage,
   TIMING_LABEL,
   VERDICT_LABEL,
 } from '../../game/messages';
@@ -36,8 +38,12 @@ export function ResultScreen() {
   }, [tl, draws, score.decisionTime, opposite]);
 
   const g = score.grade.grade;
-  const msg = resultMessage(g, score.decision, tl.result, tl.scenario.outs, score.pSafe);
-  const comment = managerComment(g, score.timing, tl, tl.scenario.seed);
+  const msg =
+    timingMessage(score.timing, score.pSafe, score.threshold) ??
+    resultMessage(g, score.decision, tl.result, tl.scenario.outs, score.pSafe);
+  const mood = managerMood(score);
+  const noSignal = !tl.runner.accepted.some((c) => c.kind !== 'slide');
+  const comment = managerComment(mood, score.timing, tl, tl.scenario.seed);
   const items = checklist(tl, score.threshold, score.timing);
   const bs = score.batter;
   const bItems = bs ? batterChecklist(tl, bs.threshold, bs.timing) : [];
@@ -65,7 +71,7 @@ export function ResultScreen() {
                 <R>{VERDICT_LABEL[score.grade.verdict]}</R>
               </div>
               <div className="muted">
-                <R>{`あなたの{判断|はんだん}：${score.decision === 'send' ? '{回|まわ}れ' : '{止|と}まれ'}${score.timing === 'hesitate' ? '（{迷|まよ}い）' : ''} → ${RESULT_CALL[tl.result]}`}</R>
+                <R>{`あなたの{判断|はんだん}：${noSignal ? '{合図|あいず}なし' : score.decision === 'send' ? '{回|まわ}れ' : '{止|と}まれ'}${score.timing === 'late' ? '（おそい）' : score.timing === 'early' ? '（はやすぎ）' : ''} → ${RESULT_CALL[tl.result]}`}</R>
               </div>
             </div>
           </div>
@@ -148,7 +154,7 @@ export function ResultScreen() {
             </div>
           )}
 
-          <Manager mood={g} text={comment} />
+          <Manager mood={mood} text={comment} />
 
           <div className="row wrap">
             {isLast ? (
@@ -224,12 +230,15 @@ export function ResultScreen() {
                     <R>{VERDICT_LABEL[bs.grade.verdict]}</R>
                   </div>
                   <div className="muted">
-                    <R>{`あなたの{合図|あいず}：${bs.decision === 'send' ? '{三塁|さんるい}へ' : '{二塁|にるい}ストップ'}${bs.timing === 'hesitate' ? '（{迷|まよ}い）' : ''} → ${BATTER_RESULT[tl.batter.result]}`}</R>
+                    <R>{`あなたの{合図|あいず}：${tl.batter.trace.accepted.length === 0 ? 'なし' : bs.decision === 'send' ? '{三塁|さんるい}へ' : '{二塁|にるい}ストップ'}${bs.timing === 'late' ? '（おそい）' : ''} → ${BATTER_RESULT[tl.batter.result]}`}</R>
                   </div>
                 </div>
               </div>
               <p className="result-msg">
-                <R>{batterMessage(bs.grade.grade, bs.decision, tl.batter.result, tl.scenario.outs, bs.pSafe)}</R>
+                <R>
+                  {timingMessage(bs.timing, bs.pSafe, bs.threshold, true) ??
+                    batterMessage(bs.grade.grade, bs.decision, tl.batter.result, tl.scenario.outs, bs.pSafe)}
+                </R>
               </p>
               <SafeMeter pSafe={bs.pSafe} threshold={bs.threshold} outs={tl.scenario.outs} batter />
               <ul className="checklist">

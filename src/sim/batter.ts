@@ -8,7 +8,7 @@
 import type { BallPath } from './ball';
 import { ARM, BATTER, CROSSPLAY, THROW } from './constants';
 import type { Draws } from './draws';
-import { BASES, dist } from './field';
+import { BASES, dist, leadGeom } from './field';
 import type { FieldingPlan } from './play';
 import { outProbability } from './probability';
 import { simulateBatter, type RunnerTrace } from './runner';
@@ -82,7 +82,8 @@ export function planBatter(
 ): BatterPlay {
   // 二塁走者を回したときだけ、打者走者への合図を受け付ける。
   // 回していなければ（三塁が詰まっているので）打者走者は二塁で止まる
-  const eligible = lead.finalDecision === 'send';
+  // 一塁走者のときは、打者走者は二塁まで（判断なし）
+  const eligible = lead.finalDecision === 'send' && !leadGeom(sc).fromFirst;
   const lastLead = lead.accepted.filter((c) => c.kind === 'send' || c.kind === 'stop').at(-1)?.t ?? 0;
   const bcmds: Command[] = eligible
     ? commands.filter((c) => (c.kind === 'bsend' || c.kind === 'bstop') && c.t >= lastLead)

@@ -89,8 +89,8 @@ describe('打者走者（二塁を回るか）', () => {
     expect(p1).toEqual(p2);
   });
 
-  it('チャレンジ10問のうち、打者走者の判断が出る長打が入る', () => {
+  it('チャレンジ10問のうち、打者走者の判断が出る長打は1問', () => {
     const set = generateChallenge(321, 'easy');
-    expect(set.filter((r) => hasBatterDecision(r.scenario)).length).toBeGreaterThanOrEqual(2);
+    expect(set.filter((r) => hasBatterDecision(r.scenario)).length).toBe(1);
   });
 });

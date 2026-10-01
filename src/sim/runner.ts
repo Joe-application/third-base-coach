@@ -3,7 +3,7 @@
 // 二塁走者（三塁で判断 → 本塁）と打者走者（二塁で判断 → 三塁）の両方に使う。
 
 import { BATTER, RUNNER, SIM_DT, SIM_MAX_TIME } from './constants';
-import { G_B_FIRST, G_B_SECOND, G_B_THIRD, G_HOME, G_THIRD } from './field';
+import { G_B_FIRST, G_B_SECOND, G_B_THIRD, leadGeom } from './field';
 import type { Command, Scenario } from './types';
 
 type Mode = 'run' | 'send' | 'brake' | 'hesitate' | 'overrunStop' | 'retreat' | 'stopped' | 'home';
@@ -17,6 +17,8 @@ export type RunnerTrace = {
   tStart: number;
   /** 判断ウィンドウの開始（判断する塁の手前 12m） */
   tWindowStart: number | null;
+  /** 判断の締め切り（判断する塁の手前 3m） */
+  tDeadline: number | null;
   /** 判断する塁（二塁走者は三塁、打者走者は二塁）に最初に届いた時刻 */
   tThird: number | null;
   /** 次の塁（二塁走者は本塁、打者走者は三塁）に着いた時刻 */
@@ -54,25 +56,27 @@ export type RunnerSpec = {
 
 export function runnerStartTime(sc: Scenario): number {
   if (sc.outs === 2) return RUNNER.reaction;
-  if (sc.battedBall.type === 'ground') return RUNNER.reaction + RUNNER.groundWaitExtra;
+  // 一塁走者はゴロならフォースなので、すぐに走る
+  if (sc.battedBall.type === 'ground' && !leadGeom(sc).fromFirst) return RUNNER.reaction + RUNNER.groundWaitExtra;
   return RUNNER.reaction;
 }
 
-/** 二塁走者 */
+/** 先頭の走者（二塁走者、または一塁走者） */
 export function simulateRunner(
   sc: Scenario,
   commands: Command[],
   landingTime: number,
   record = true,
 ): RunnerTrace {
+  const geom = leadGeom(sc);
   return simulateRunnerSpec(
     {
       top: RUNNER.topSpeed[sc.runnerSpeed],
       tStart: runnerStartTime(sc),
       halfwayUntil: sc.outs < 2 && sc.battedBall.type !== 'ground' ? landingTime + RUNNER.halfwayReaction : 0,
-      gBase: G_THIRD,
-      gTarget: G_HOME,
-      autoTurns: [],
+      gBase: geom.gThird,
+      gTarget: geom.gHome,
+      autoTurns: geom.autoTurns,
       gStart: RUNNER.secondaryLead,
     },
     commands,
@@ -114,6 +118,7 @@ export function simulateRunnerSpec(spec: RunnerSpec, commands: Command[], record
   const zoneLen = zone1 - zone0;
   const pathFactor = zoneLen / (zoneLen + RUNNER.turnExtraPath);
   const gWindow = B - RUNNER.windowDistance;
+  const gDeadline = B - RUNNER.decisionDeadline;
   /** 判断なしで回る塁のまわりでは、速さを落として膨らむ */
   const autoTurn = (g: number) =>
     spec.autoTurns.some((b) => g >= b - RUNNER.turnZoneBefore && g < b + RUNNER.turnZoneAfter);
@@ -125,6 +130,7 @@ export function simulateRunnerSpec(spec: RunnerSpec, commands: Command[], record
     bulge: [],
     tStart,
     tWindowStart: null,
+    tDeadline: null,
     tThird: null,
     tHome: null,
     hesitated: false,
@@ -268,6 +274,7 @@ export function simulateRunnerSpec(spec: RunnerSpec, commands: Command[], record
     }
 
     if (tr.tWindowStart === null && g >= gWindow) tr.tWindowStart = t;
+    if (tr.tDeadline === null && g >= gDeadline) tr.tDeadline = t;
     if (tr.tThird === null && g >= B) tr.tThird = t;
     if (record) {
       tr.g.push(g);

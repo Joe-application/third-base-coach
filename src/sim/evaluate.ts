@@ -1,6 +1,6 @@
 // 判断の評価（§5）。P_safe はモンテカルロで求める。
 
-import { BATTER, EVAL } from './constants';
+import { BATTER, EVAL, RUNNER } from './constants';
 import { drawsFromSeed, mixDraws, type Draws, type KnownFacts } from './draws';
 import { createBallPath } from './ball';
 import { hashSeed } from './rng';
@@ -78,7 +78,7 @@ export function baselinePSafe(sc: Scenario, n = 2000, seed = 12345): number {
 }
 
 export type Grade = 'great' | 'ok' | 'bad';
-export type Verdict = 'nice' | 'close' | 'reckless' | 'too_cautious';
+export type Verdict = 'nice' | 'close' | 'reckless' | 'too_cautious' | 'too_early' | 'too_late';
 
 export type GradeResult = { grade: Grade; verdict: Verdict; diff: number; points: number };
 
@@ -106,27 +106,52 @@ export function correctAnswer(pSafe: number, threshold: number): 'send' | 'stop'
   return 'close';
 }
 
-export type Timing = 'best' | 'good' | 'early' | 'hesitate';
+/** best/good = 間に合った、early = はやすぎ（×）、late = おそい・迷った（×） */
+export type Timing = 'best' | 'good' | 'early' | 'late';
 
-export type WindowInfo = { tWindowStart: number; tThird: number };
+export type WindowInfo = {
+  /** 判断ウィンドウの開始（判断する塁の手前 12m） */
+  tWindowStart: number;
+  /** 判断する塁に着く時刻 */
+  tThird: number;
+  /** 締め切り（判断する塁の手前 3m）。これを過ぎたら「おそい」 */
+  tDeadline: number;
+};
 
 /** 判断しなかった場合の走者の動きから、判断ウィンドウを求める */
 export function decisionWindow(sc: Scenario): WindowInfo {
   const ball = createBallPath(sc);
   const tr = simulateRunner(sc, [], ball.landingTime, false);
-  return { tWindowStart: tr.tWindowStart ?? 0, tThird: tr.tThird ?? tr.tWindowStart ?? 0 };
+  const tWindowStart = tr.tWindowStart ?? 0;
+  return { tWindowStart, tThird: tr.tThird ?? tWindowStart, tDeadline: tr.tDeadline ?? tWindowStart };
 }
 
-export function judgeTiming(tD: number, hesitated: boolean, tCatch: number, win: WindowInfo): Timing {
-  if (hesitated) return 'hesitate';
-  if (tD < win.tWindowStart) return 'early';
+/** 早すぎにならない最初の時刻：判断ウィンドウの開始か、外野手が捕る少し前の早いほう */
+export function windowOpen(win: WindowInfo, tCatch: number): number {
+  return Math.min(win.tWindowStart, tCatch - RUNNER.earlyMargin);
+}
+
+/**
+ * タイミングの判定。tD = 合図した時刻（締め切りまでに合図がなければ null）
+ * tRef = 判断の決め手になる瞬間（二塁走者は外野手の捕球、打者走者は外野手の送球）
+ */
+export function judgeTiming(tD: number | null, tRef: number, win: WindowInfo): Timing {
+  if (tD === null || tD > win.tDeadline + 1e-6) return 'late';
+  const open = windowOpen(win, tRef);
+  if (tD < open - 1e-6) return 'early';
   const w = EVAL.bestTimingWindow;
-  let lo = tCatch - w;
-  let hi = tCatch + w;
-  // 捕球がウィンドウの外なら、ウィンドウの中で早めに決めればベストタイミング
-  if (hi < win.tWindowStart) [lo, hi] = [win.tWindowStart, win.tWindowStart + 2 * w];
-  if (lo > win.tThird) [lo, hi] = [win.tWindowStart, win.tThird];
+  let lo = tRef - w;
+  let hi = tRef + w;
+  // 決め手の瞬間が締め切りより後（深い打球）なら、ウィンドウの中で早めに決めればベスト
+  if (lo > win.tDeadline) [lo, hi] = [open, win.tDeadline];
   return tD >= lo && tD <= hi ? 'best' : 'good';
+}
+
+/** タイミングが × のときの採点（判断の中身に関係なく ×） */
+function timingFail(g: GradeResult, timing: Timing): GradeResult {
+  if (timing === 'early') return { ...g, grade: 'bad', verdict: 'too_early', points: 0 };
+  if (timing === 'late') return { ...g, grade: 'bad', verdict: 'too_late', points: 0 };
+  return g;
 }
 
 export type PlayScore = {
@@ -201,28 +226,29 @@ function scoreBatter(timeline: PlayTimeline, draws: Draws, mcRuns: number): Batt
   let decision: 'send' | 'stop';
   let tD: number;
   let prior: Command[];
+  const free = simulateBatter(sc, [], false);
+  const win: WindowInfo = {
+    tWindowStart: free.tWindowStart ?? 0,
+    tThird: free.tThird ?? 0,
+    tDeadline: free.tDeadline ?? 0,
+  };
   if (last) {
     decision = last.kind === 'bsend' ? 'send' : 'stop';
     tD = last.t;
     prior = decisions.slice(0, -1);
   } else {
     decision = 'stop';
-    tD = tr.tHesitate ?? tr.tThird ?? 0;
+    tD = win.tDeadline;
     prior = [];
   }
   const est = estimateBatterPSafe(sc, draws, leadCommands, prior, tD, mcRuns);
   const threshold = batterThresholdFor(sc);
-  const g = gradeDecision(decision, est.pSafe, threshold);
-  const grade = { ...g, points: EVAL.batterPoints[g.grade] };
-  const hesitated = tr.hesitated && (!last || last.t >= (tr.tHesitate ?? Infinity));
-  // 打者走者の判断の手がかりは、外野手が投げた瞬間（中継に返すか・どこへ投げるか）
-  const free = simulateBatter(sc, [], false);
-  const timing = judgeTiming(tD, hesitated, timeline.fielding.tRelease, {
-    tWindowStart: free.tWindowStart ?? 0,
-    tThird: free.tThird ?? 0,
-  });
-  const timingPoints =
-    timing === 'best' ? EVAL.batterTimingBonus : timing === 'hesitate' ? EVAL.batterHesitatePenalty : 0;
+  // 打者走者の判断の決め手は、外野手が投げた瞬間（中継に返すか・どこへ投げるか）。
+  // 打者走者のボタンはウィンドウが始まってから出るので、早すぎにはならない
+  const timing = judgeTiming(last ? last.t : null, Math.max(timeline.fielding.tRelease, win.tWindowStart), win);
+  const g = timingFail(gradeDecision(decision, est.pSafe, threshold), timing);
+  const grade = { ...g, points: g.grade === 'bad' ? 0 : EVAL.batterPoints[g.grade] };
+  const timingPoints = timing === 'best' ? EVAL.batterTimingBonus : 0;
   const resultPoints = b.result === 'third' ? EVAL.batterSafeBonus : 0;
   return {
     decision,
@@ -255,21 +281,22 @@ export function scorePlay(
   let decision: 'send' | 'stop';
   let tD: number;
   let prior: Command[];
+  const win = decisionWindow(sc);
   if (last) {
     decision = last.kind as 'send' | 'stop';
     tD = last.t;
     prior = decisions.slice(0, -1);
   } else {
+    // 締め切りまでに合図しなかった：その時点で回していたら、を P_safe に使う
     decision = 'stop';
-    tD = r.tHesitate ?? r.tThird ?? 0;
+    tD = win.tDeadline;
     prior = [];
   }
   const est = estimatePSafe(sc, draws, prior, tD, opts.mcRuns ?? EVAL.mcRuns);
   const threshold = thresholdFor(sc, opts);
-  const grade = gradeDecision(decision, est.pSafe, threshold);
-  const hesitated = r.hesitated && (!last || last.t >= (r.tHesitate ?? Infinity));
-  const timing = judgeTiming(tD, hesitated, timeline.fielding.tCatch, decisionWindow(sc));
-  const timingPoints = timing === 'best' ? EVAL.timingBonus : timing === 'hesitate' ? EVAL.hesitatePenalty : 0;
+  const timing = judgeTiming(last ? last.t : null, timeline.fielding.tCatch, win);
+  const grade = timingFail(gradeDecision(decision, est.pSafe, threshold), timing);
+  const timingPoints = timing === 'best' ? EVAL.timingBonus : 0;
   const resultPoints = timeline.result === 'safe' ? EVAL.safeBonus : 0;
   const slidePoints = timeline.slideHelped ? EVAL.slideBonus : 0;
   const batter = scoreBatter(timeline, draws, opts.mcRuns ?? EVAL.mcRuns);

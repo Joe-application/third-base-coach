@@ -75,7 +75,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'first_nice', name: '初めてのナイス判断', desc: '◎ を1回とる', icon: '🌟', test: (s) => sumGreat(s) >= 1 },
   { id: 'two_out_master', name: '2アウト職人', desc: '2アウトの場面で ◎ を10回', icon: '🔥', test: (s) => s.twoOutGreat >= 10 },
   { id: 'careful', name: '石橋をたたく', desc: '0アウトで正しく止めて ◎ を10回', icon: '🪨', test: (s) => s.zeroOutStopGreat >= 10 },
-  { id: 'no_hesitation', name: '迷わない男', desc: '10プレー連続で「迷い」なし', icon: '⚡', test: (s) => s.noHesitateStreak >= 10 },
+  { id: 'no_hesitation', name: '迷わない男', desc: '10プレー連続で「おそい」なし', icon: '⚡', test: (s) => s.noHesitateStreak >= 10 },
   { id: 'slide', name: '滑り込め！', desc: 'スライディングの合図でセーフを5回', icon: '⬇️', test: (s) => s.slideSafe >= 5 },
   { id: 'revenge', name: 'あの日のリベンジ', desc: '「あの日の場面」で回して ◎', icon: '🏆', test: (s) => s.anohiCleared },
   { id: 'double_nice', name: 'ダブルでナイス判断', desc: '1プレーで2人とも ◎ を3回', icon: '✌️', test: (s) => s.doubleGreat >= 3 },
@@ -116,7 +116,7 @@ export function applyPlay(
   const great = score.grade.grade === 'great';
   if (great && outs === 2) s.twoOutGreat++;
   if (great && outs === 0 && score.decision === 'stop') s.zeroOutStopGreat++;
-  s.noHesitateStreak = score.timing === 'hesitate' ? 0 : s.noHesitateStreak + 1;
+  s.noHesitateStreak = score.timing === 'late' ? 0 : s.noHesitateStreak + 1;
   if (tl.slideHelped) s.slideSafe++;
   s.bestCombo = Math.max(s.bestCombo, ctx.combo);
   if (ctx.presetId === 'anohi' && great && score.decision === 'send') s.anohiCleared = true;

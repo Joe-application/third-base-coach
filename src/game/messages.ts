@@ -16,6 +16,7 @@ export const BUTTONS = {
   bstop: '✋ 二塁ストップ',
   bsend: '🔄 三塁へ！',
   batterCaption: 'バッターランナー',
+  skip: '⏭ スキップ',
 };
 
 export const LABEL = {
@@ -47,13 +48,15 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   close: 'ギリギリ（どちらもアリ）',
   reckless: 'ちょっと{無理|むり}しすぎ',
   too_cautious: '{慎重|しんちょう}すぎ',
+  too_early: '{合図|あいず}がはやすぎ！',
+  too_late: '{合図|あいず}がおそい！',
 };
 
 export const TIMING_LABEL: Record<Timing, string> = {
   best: 'ベストタイミング！',
   good: 'タイミングOK',
-  early: 'ちょっと{早|はや}すぎ（まだ{外野手|がいやしゅ}が{捕|と}る{前|まえ}）',
-  hesitate: '{迷|まよ}っちゃった（ランナーが{遅|おそ}くなった）',
+  early: 'はやすぎ（まだ{外野手|がいやしゅ}が{捕|と}る{前|まえ}）',
+  late: 'おそい（{塁|るい}の{手前|てまえ}3mまでに{合図|あいず}できなかった）',
 };
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
@@ -80,29 +83,74 @@ export function resultMessage(grade: Grade, decision: 'send' | 'stop', result: P
   return `{回|まわ}していれば${pct(pSafe)}でセーフだった。{思|おも}い{切|き}って{回|まわ}そう！`;
 }
 
-/** 監督のひとこと（§6.5）。× でも前向きに */
-export function managerComment(grade: Grade, timing: Timing, tl: PlayTimeline, pick: number): string {
+/** タイミングが × だったときのメッセージ（判断の中身より先に出す） */
+export function timingMessage(timing: Timing, pSafe: number, threshold: number, batter = false): string | null {
+  const should = pSafe >= threshold ? (batter ? '{三塁|さんるい}へ{行|い}かせる' : '{回|まわ}す') : batter ? '{二塁|にるい}で{止|と}める' : '{止|と}める';
+  const hint = `（この{場面|ばめん}は「${should}」が{正解|せいかい}。セーフになるのは${pct(pSafe)}）`;
+  if (timing === 'early')
+    return `はやすぎ！ {外野手|がいやしゅ}がボールを{捕|と}るところを{見|み}てから{合図|あいず}しよう${hint}`;
+  if (timing === 'late')
+    return `おそい！ ${batter ? '{二塁|にるい}' : '{三塁|さんるい}'}の{手前|てまえ}3mまでに{合図|あいず}しないと、ランナーは{迷|まよ}ってしまう${hint}`;
+  return null;
+}
+
+/** 監督の表情：笑顔／無表情／少し怒る／とても怒る */
+export type ManagerMood = 'smile' | 'neutral' | 'annoyed' | 'furious';
+
+const MOOD_RANK: Record<ManagerMood, number> = { smile: 0, neutral: 1, annoyed: 2, furious: 3 };
+
+/** 1つの判断から表情を決める */
+function moodOf(s: { grade: { grade: Grade; diff: number }; timing: Timing }): ManagerMood {
+  if (s.grade.grade === 'great') return 'smile';
+  if (s.grade.grade === 'ok') return 'neutral';
+  // × のうち、迷って締め切りを過ぎた・基準から大きく外れた → とても怒る
+  if (s.timing === 'late') return 'furious';
+  // はやすぎは、中身が合っていても × だが、少し怒るくらい
+  if (s.timing === 'early') return 'annoyed';
+  return Math.abs(s.grade.diff) >= 0.25 ? 'furious' : 'annoyed';
+}
+
+/** プレー全体の表情（打者走者の判断もあれば、悪いほう） */
+export function managerMood(score: {
+  grade: { grade: Grade; diff: number };
+  timing: Timing;
+  batter: null | { grade: { grade: Grade; diff: number }; timing: Timing };
+}): ManagerMood {
+  const a = moodOf(score);
+  if (!score.batter) return a;
+  const b = moodOf(score.batter);
+  return MOOD_RANK[b] > MOOD_RANK[a] ? b : a;
+}
+
+/** 監督のひとこと（§6.5）。表情に合わせるが、最後は前向きに */
+export function managerComment(mood: ManagerMood, timing: Timing, tl: PlayTimeline, pick: number): string {
   const f = tl.fielding;
   const who = LABEL.fielder[f.fielder];
-  const lines: Record<Grade, string[]> = {
-    great: [
-      'いいぞ！ その{判断|はんだん}が{試合|しあい}を{決|き}めるんだ',
-      'よく{見|み}てたな！ コーチャーはチームの{目|め}だ',
-      'はっきりした{合図|あいず}、ランナーも{走|はし}りやすいぞ',
-    ],
-    ok: [
-      'むずかしい{場面|ばめん}だったな。どっちもアリだ',
-      '{悪|わる}くない！ {外野手|がいやしゅ}の{動|うご}きをもう{一歩|いっぽ}よく{見|み}よう',
-    ],
-    bad: [
-      `ドンマイ！ ${who}の{捕|と}り{方|かた}をよく{見|み}てみよう`,
-      '{次|つぎ}はアウトカウントを{思|おも}い{出|だ}してから{決|き}めよう',
-      'だいじょうぶ、{練習|れんしゅう}すれば{必|かなら}ずわかるようになる',
-    ],
-  };
-  if (timing === 'hesitate') return '{迷|まよ}ったら{負|ま}けだ！ {早|はや}めに、はっきり{合図|あいず}しよう';
-  const arr = lines[grade];
-  return arr[pick % arr.length];
+  const outs = tl.scenario.outs;
+  if (mood === 'furious') {
+    if (timing === 'late') return 'コラーッ！ {何|なに}を{迷|まよ}ってるんだ！ ランナーは{待|ま}ってくれないぞ！ {次|つぎ}はもっと{早|はや}く{決|き}めろ！';
+    return pick % 2 === 0
+      ? `コラーッ！ ${outs}アウトだぞ！ アウトカウントを{考|かんが}えろ！ {次|つぎ}は{頼|たの}むぞ！`
+      : `なにやってるんだ！ ${who}の{捕|と}り{方|かた}をちゃんと{見|み}ろ！ {次|つぎ}は{取|と}り{返|かえ}せ！`;
+  }
+  if (mood === 'annoyed') {
+    if (timing === 'early') return 'おいおい、はやすぎるぞ。{外野手|がいやしゅ}が{捕|と}るところを{見|み}てから{決|き}めるんだ';
+    const lines = [
+      `うーん…。${who}の{捕|と}り{方|かた}をもう{一回|いっかい}よく{見|み}てみろ`,
+      'ちょっと{違|ちが}うな。アウトカウントを{思|おも}い{出|だ}してから{決|き}めよう',
+    ];
+    return lines[pick % lines.length];
+  }
+  if (mood === 'neutral') {
+    const lines = ['まあ、どっちもアリだな', 'むずかしい{場面|ばめん}だった。{悪|わる}くはない'];
+    return lines[pick % lines.length];
+  }
+  const lines = [
+    'いいぞ！ その{判断|はんだん}が{試合|しあい}を{決|き}めるんだ',
+    'よく{見|み}てたな！ コーチャーはチームの{目|め}だ',
+    'はっきりした{合図|あいず}、ランナーも{走|はし}りやすいぞ',
+  ];
+  return lines[pick % lines.length];
 }
 
 export function directionName(angleDeg: number): string {
@@ -177,7 +225,6 @@ export const HINT = {
       ['0アウト→{慎重|しんちょう}に', '1アウト→ふつう', '2アウト→{積極的|せっきょくてき}に'][sc.outs],
       '{外野手|がいやしゅ}は{前|まえ}？{横|よこ}？{後|うし}ろ？',
     ];
-    list.push('（タップでつづける）');
     return list;
   },
   resume: 'タップしてつづける',
@@ -192,7 +239,6 @@ export const HINT = {
       ][sc.outs],
       'ボールは{今|いま}どこ？ {中継|ちゅうけい}に{返|かえ}った？',
     ];
-    list.push('（タップでつづける）');
     return list;
   },
 };
@@ -200,6 +246,7 @@ export const HINT = {
 export const INTRO = {
   tapToStart: 'タップでスタート',
   runner: 'ランナー{二塁|にるい}',
+  runnerOn: (sc: Scenario) => (!sc.runners.second && sc.runners.first ? 'ランナー{一塁|いちるい}' : 'ランナー{二塁|にるい}'),
   runnerSpeed: 'ランナーの{足|あし}',
   batterSpeed: 'バッターの{足|あし}',
   arms: '{外野手|がいやしゅ}の{肩|かた}',
@@ -249,9 +296,9 @@ export const TUTORIAL_PAGES: { title: string; body: string[]; art: 'role' | 'sig
     title: '{早|はや}く、はっきり',
     art: 'fast',
     body: [
-      'ランナーが{三塁|さんるい}の{手前|てまえ}12mに{来|き}たら、ボタンが{光|ひか}るよ。',
-      '{迷|まよ}っているとランナーが{遅|おそ}くなって、どっちを{選|えら}んでも{悪|わる}い{結果|けっか}になる。',
-      '{外野手|がいやしゅ}がボールを{捕|と}るところを{見|み}て、すぐ{決|き}めよう！',
+      '{試合|しあい}は{待|ま}ってくれない！ ボタンが{光|ひか}って、{下|した}に{黄色|きいろ}いバーが{出|で}たら{合図|あいず}のとき。',
+      'バーがなくなる（ランナーが{三塁|さんるい}の{手前|てまえ}3m）までに{合図|あいず}しないと「おそい」で ×。',
+      '{外野手|がいやしゅ}がボールを{捕|と}る{前|まえ}に{合図|あいず}するのも「はやすぎ」で ×。{捕|と}るところを{見|み}て、すぐ{決|き}めよう！',
     ],
   },
   {

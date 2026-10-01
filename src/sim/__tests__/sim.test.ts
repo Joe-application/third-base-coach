@@ -10,11 +10,11 @@ import {
   scorePlay,
   thresholdFor,
 } from '../evaluate';
-import { G_HOME, G_THIRD } from '../field';
+import { G_HOME, G_THIRD, leadGeom } from '../field';
 import { outProbability, simulatePlay } from '../play';
 import { createRng, hashSeed } from '../rng';
 import { simulateRunner, simulateRunnerSpec } from '../runner';
-import { generateChallenge, PRESETS, randomScenario } from '../scenario';
+import { generateChallenge, isLongHit, PRESETS, randomScenario } from '../scenario';
 import { planThrow } from '../throw';
 import type { Scenario } from '../types';
 
@@ -195,14 +195,19 @@ describe('評価', () => {
     expect(p1).toEqual(p2);
   });
 
-  it('タイミング判定', () => {
-    const win = { tWindowStart: 2.3, tThird: 4.4 };
-    expect(judgeTiming(1.0, false, 3, win)).toBe('early');
-    expect(judgeTiming(3.2, false, 3, win)).toBe('best');
-    expect(judgeTiming(4.0, false, 3, win)).toBe('good');
-    expect(judgeTiming(4.5, true, 3, win)).toBe('hesitate');
-    // 捕球が三塁到達より後：ウィンドウ内ならベスト
-    expect(judgeTiming(4.0, false, 6, win)).toBe('best');
+  it('タイミング判定（はやすぎ・おそいは ×）', () => {
+    const win = { tWindowStart: 2.3, tThird: 4.4, tDeadline: 4.0 };
+    expect(judgeTiming(1.0, 3, win)).toBe('early');
+    expect(judgeTiming(2.6, 3, win)).toBe('best');
+    expect(judgeTiming(3.2, 3, win)).toBe('best');
+    expect(judgeTiming(3.8, 3, win)).toBe('good');
+    expect(judgeTiming(4.2, 3, win)).toBe('late');
+    expect(judgeTiming(null, 3, win)).toBe('late');
+    // 捕球がウィンドウより前：捕球の少し前から OK
+    expect(judgeTiming(1.9, 2.0, win)).toBe('best');
+    expect(judgeTiming(1.5, 2.0, win)).toBe('early');
+    // 捕球が締め切りより後（深い打球）：ウィンドウの中ならベスト
+    expect(judgeTiming(3.0, 6, win)).toBe('best');
   });
 
   it('判断ウィンドウは三塁到達の前', () => {
@@ -210,13 +215,29 @@ describe('評価', () => {
     expect(w.tWindowStart).toBeLessThan(w.tThird);
   });
 
-  it('迷ったプレーは −30、止めた扱い', () => {
+  it('締め切りまでに合図しないと「おそい」で ×、止めた扱い', () => {
     const d = drawsFromSeed(4);
     const tl = simulatePlay(anohi, [], d, { frames: false });
     const s = scorePlay(tl, d, { mcRuns: 100 });
     expect(s.decision).toBe('stop');
-    expect(s.timing).toBe('hesitate');
-    expect(s.timingPoints).toBe(-30);
+    expect(s.timing).toBe('late');
+    expect(s.grade.grade).toBe('bad');
+    expect(s.grade.verdict).toBe('too_late');
+  });
+
+  it('外野手が捕る前に合図すると「はやすぎ」で ×（判断の中身が正しくても）', () => {
+    const d = drawsFromSeed(4);
+    const tl = simulatePlay(anohi, [{ t: 0.5, kind: 'send' }], d, { frames: false });
+    const s = scorePlay(tl, d, { mcRuns: 100 });
+    expect(s.timing).toBe('early');
+    expect(s.grade.grade).toBe('bad');
+    expect(s.grade.verdict).toBe('too_early');
+  });
+
+  it('締め切りは三塁の手前、ウィンドウの開始より後', () => {
+    const w = decisionWindow(anohi);
+    expect(w.tDeadline).toBeGreaterThan(w.tWindowStart);
+    expect(w.tDeadline).toBeLessThan(w.tThird);
   });
 });
 
@@ -229,6 +250,37 @@ describe('シナリオ生成', () => {
       expect(['LF', 'CF', 'RF']).toContain(tl.fielding.fielder);
       expect(Number.isFinite(tl.duration)).toBe(true);
     }
+  });
+
+  it('チャレンジ10問：単打7問（7方向）・ランナー一塁2問・外野の間を抜ける長打1問', () => {
+    const set = generateChallenge(77, 'easy');
+    const singles = set.filter((r) => r.scenario.runners.second && !isLongHit(r.scenario));
+    const fromFirst = set.filter((r) => r.scenario.runners.first);
+    expect(singles).toHaveLength(7);
+    expect(fromFirst).toHaveLength(2);
+    // 7方向が1つずつ（レフト線〜ライト線）
+    const angles = singles.map((r) => r.scenario.battedBall.angleDeg).sort((a, b) => a - b);
+    expect(angles[0]).toBeLessThan(-35);
+    expect(angles[6]).toBeGreaterThan(35);
+  });
+
+  it('ランナー一塁：一塁走者は二塁を回って三塁の手前で判断し、打者走者の判断は出ない', () => {
+    const set = generateChallenge(77, 'easy');
+    const sc = set.find((r) => r.scenario.runners.first)!.scenario;
+    const geom = leadGeom(sc);
+    expect(geom.fromFirst).toBe(true);
+    const tl = simulatePlay(sc, [], drawsFromSeed(1));
+    // 判断しなければ、三塁の手前で迷って止まる
+    expect(tl.runner.hesitated).toBe(true);
+    expect(Math.max(...tl.runner.g)).toBeGreaterThan(geom.gThird);
+    expect(tl.runner.tHome).toBeNull();
+    const sent = simulatePlay(sc, [{ t: tl.runner.tWindowStart!, kind: 'send' }], drawsFromSeed(1), { frames: false });
+    expect(sent.runner.tHome).not.toBeNull();
+    expect(sent.batter?.eligible ?? false).toBe(false);
+    // 二塁を通るときの座標は二塁ベースの近く
+    const i = tl.runner.g.findIndex((g) => g >= geom.gThird - 23);
+    const p = geom.pos(tl.runner.g[i], 0);
+    expect(Math.hypot(p.x - 0, p.y - 32.53)).toBeLessThan(2);
   });
 
   it('チャレンジ10問はアウトカウントと正解がばらける', () => {
