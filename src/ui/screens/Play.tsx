@@ -12,6 +12,7 @@ import { appendHistory } from '../../game/storage';
 import { sfx, unlockAudio, vibrate } from '../audio';
 import { Field } from '../components/Field';
 import { OutsDots } from '../components/OutsDots';
+import { buildLabel } from '../../buildInfo';
 import { R } from '../components/Ruby';
 import { callAt, signalAt, trailAt } from '../playback';
 import { useApp } from '../state';
@@ -338,6 +339,7 @@ export function PlayScreen() {
             </span>
           )}
           {session.combo >= 2 && <span className="hud-item combo">🔥×{session.combo}</span>}
+          <span className="hud-build">{buildLabel()}</span>
         </div>
       )}
 

@@ -1135,3 +1135,15 @@ details summary {
   font-weight: 800;
   min-height: 32px;
 }
+
+/* ビルドした日時（新しい版が出ているかの確認用） */
+.build-label {
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.hud-build {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--muted);
+}

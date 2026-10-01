@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { APP_TITLE, MODE_INFO } from '../../game/messages';
 import { nextRank, rankFor } from '../../game/progression';
 import { createProfile, deleteProfile, loadProfile, loadProfiles, MAX_PROFILES } from '../../game/storage';
+import { buildLabel } from '../../buildInfo';
 import { R } from '../components/Ruby';
 import { useApp, type Mode } from '../state';
 import { useStarter } from '../useStarter';
@@ -107,6 +108,7 @@ export function HomeScreen() {
 
   return (
     <div className="home screen-scroll">
+      <div className="build-label">{buildLabel()}</div>
       <header className="home-head">
         <h1 className="title">
           <R>{APP_TITLE}</R>
