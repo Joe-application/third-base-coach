@@ -41,11 +41,11 @@ export const BALL = {
   /** 最初のバウンドでの速さの倍率 */
   firstBounceFactor: 0.8,
   /** 転がりの減速度：内野（土） */
-  /** 【調整】仕様 3.0 */
-  decelInfield: 3.5,
+  /** 転がりの減速度：内野（土） */
+  decelInfield: 3.0,
   /** 転がりの減速度：外野（芝） */
-  /** 【調整】仕様 4.0 */
-  decelOutfield: 4.5,
+  /** 転がりの減速度：外野（芝） */
+  decelOutfield: 4.0,
   /** ライナー／フライの着地後の転がり初速 = 着地前の水平速度 × この値 */
   landingRollFactor: 0.5,
   /** 描画用：ゴロの最初の弾みの高さ */
@@ -70,12 +70,12 @@ export const FIELDER = {
   /** 移動がこれ未満なら「正面（前進）」扱い */
   minMoveForAngle: 2,
   /** 【調整】捕球〜送球の持ち替え時間 [min, max]。仕様 0.8〜1.0 / 1.1〜1.4 / 1.5〜2.0。
-   *  最初は学童向けに長くしたが、「実際はそんなにかからない」とのことで 2026-09-29 に2回短くした
-   *  （1.5〜2.1 → 1.1〜1.5 → 0.55〜0.75 → いまの値。2026-10-02 にさらに半分）。そのぶん送球の速さ（ARM）を学童らしく遅くして釣り合わせた */
+   *  学童としては送球が早すぎ、「あの日の場面」が 2アウトでもアウトになるため長くした。
+   *  （一度、短くしたが、再生を「等速」にしたら違和感がなかったので 2026-10-02 に元へ戻した） */
   hold: {
-    forward: [0.28, 0.38],
-    side: [0.35, 0.45],
-    back: [0.45, 0.6],
+    forward: [1.5, 2.1],
+    side: [1.8, 2.4],
+    back: [2.2, 2.9],
   } as Record<'forward' | 'side' | 'back', [number, number]>,
   fumbleProb: 0.08,
   fumbleProbHardGround: 0.12,
@@ -158,25 +158,22 @@ export const BATTER = {
 };
 
 // ---- 送球（§4.6） ----
-/** 【調整】仕様は 弱い 18m/s・45m／普通 21m/s・55m／強い 24m/s・65m。
- *  持ち替えを短くしたぶん、小6の外野手らしく少し遅く・短くした（普通 = 約 63km/h） */
 export const ARM: Record<Arm, { vLine: number; dMax: number; sigmaFactor: number }> = {
-  weak: { vLine: 14.5, dMax: 39, sigmaFactor: 1.2 },
-  normal: { vLine: 17.5, dMax: 48, sigmaFactor: 1.0 },
-  strong: { vLine: 20.5, dMax: 57, sigmaFactor: 0.8 },
+  weak: { vLine: 18, dMax: 45, sigmaFactor: 1.2 },
+  normal: { vLine: 21, dMax: 55, sigmaFactor: 1.0 },
+  strong: { vLine: 24, dMax: 65, sigmaFactor: 0.8 },
 };
 
 export const THROW = {
-  /** 【調整】d_max で実効速度が v_line のこの倍率まで落ちる（仕様 0.65） */
-  farSpeedFactor: 0.55,
+  /** d_max で実効速度が v_line のこの倍率まで落ちる */
+  farSpeedFactor: 0.65,
   /** 【調整】送球の速さのばらつき（標準偏差、倍率）。仕様にない値 */
   speedJitterSd: 0.16,
   /** 本塁上の左右ズレの標準偏差 = この値 × 送球距離 */
   sigmaPerMeter: 0.06,
   /** 捕手が動いて捕るズレ */
   catcherMoveDev: 2,
-  /** 【調整】仕様 0.4 */
-  catcherMoveTime: 0.5,
+  catcherMoveTime: 0.4,
   /** 捕れない（後逸）ズレ */
   missDev: 4,
   /** 捕手の捕球ミス */
@@ -185,8 +182,8 @@ export const THROW = {
   /** 【調整】距離が d_max のこの割合を超えるとワンバウンド送球とみなす */
   bounceRatio: 0.8,
   /** 中継の持ち替え時間 */
-  /** 【調整】仕様 0.8〜1.2。「中継の持ち替えももっと短い」とのことで 1/4 に */
-  relayHold: [0.2, 0.3] as [number, number],
+  /** 中継の持ち替え時間 */
+  relayHold: [0.8, 1.2] as [number, number],
   /** 中継時の送球ミス（お手玉など）の確率と遅れ */
   relayErrorProb: 0.1,
   relayErrorExtra: [0.5, 1.5] as [number, number],
@@ -201,14 +198,13 @@ export const THROW = {
 
 // ---- 本塁のクロスプレー（§4.7） ----
 export const CROSSPLAY = {
-  /** 【調整】捕ってからタッチまで（仕様 0.4） */
-  tagTime: 0.5,
-  /** 【調整】これより大きく遅れたらほぼアウト、これより大きく早ければセーフ（仕様 0.6）。
-   *  ロジスティックの幅を広げたので、境目で確率が飛ばない値にした */
-  clearMargin: 1.08,
+  /** 捕ってからタッチまで */
+  tagTime: 0.4,
+  /** これより大きく遅れたらほぼアウト、これより大きく早ければセーフ */
+  clearMargin: 0.6,
   clearOutProb: 0.97,
-  /** 【調整】ロジスティック関数の幅（仕様 0.15）。学童のタッチプレーは不確実 */
-  logisticScale: 0.3,
+  /** ロジスティック関数の幅 */
+  logisticScale: 0.15,
   /** スライディング合図ありのときアウト確率に掛ける値 */
   slideFactor: 0.85,
   /** スライディングが効く範囲：送球到達とランナー到達の差 */

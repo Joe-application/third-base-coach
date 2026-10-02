@@ -66,8 +66,7 @@ export const PRESETS: Record<string, Scenario> = {
     battedBall: { type: 'liner', angleDeg: 16, strength: 'hard', landing: landingAt(16, 58, 1.9) },
     runnerSpeed: 'normal',
     batterSpeed: 'fast',
-    // ボールを拾うライトの肩が弱い → 三塁を狙える
-    outfieldArm: { LF: 'normal', CF: 'normal', RF: 'weak' },
+    outfieldArm: allArms('normal'),
     outfieldDepth: 'normal',
     seed: 71,
   },
@@ -76,9 +75,10 @@ export const PRESETS: Record<string, Scenario> = {
     name: 'センター前の弱いゴロ',
     outs: 1,
     runners: { first: false, second: true, third: false },
-    battedBall: { type: 'ground', angleDeg: 0, strength: 'weak' },
+    battedBall: { type: 'ground', angleDeg: 8, strength: 'weak' },
     runnerSpeed: 'normal',
-    outfieldArm: allArms('normal'),
+    // 肩の強いセンターが前に出て捕る → ギリギリの問題
+    outfieldArm: { LF: 'normal', CF: 'strong', RF: 'normal' },
     outfieldDepth: 'normal',
     seed: 59,
   },
