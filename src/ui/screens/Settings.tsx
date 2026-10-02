@@ -27,9 +27,9 @@ export function SettingsScreen() {
         <div className="seg-ctl">
           {(
             [
-              ['auto', 'ランクに{合|あ}わせる'],
-              ['slow', 'スロー'],
               ['normal', '{等速|とうそく}'],
+              ['slow', 'スロー'],
+              ['auto', 'ランクに{合|あ}わせる'],
             ] as const
           ).map(([v, l]) => (
             <button key={v} className={s.speed === v ? 'on' : ''} onClick={() => set({ speed: v })}>

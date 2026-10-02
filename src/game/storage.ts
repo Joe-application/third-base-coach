@@ -96,15 +96,21 @@ export type Settings = {
   thresholds: Record<OutCount, number>;
   /** 点差・イニングの補正 */
   situational: boolean;
+  /** 保存形式のバージョン（古い設定を読み替えるため） */
+  version: number;
 };
 
+/** 2 = 速さの最初の値を「等速」にした版（2026-10-02） */
+export const SETTINGS_VERSION = 2;
+
 export const DEFAULT_SETTINGS: Settings = {
-  speed: 'auto',
+  speed: 'normal',
   sound: true,
   voice: true,
   vibrate: true,
   thresholds: { ...EVAL.thresholds },
   situational: false,
+  version: SETTINGS_VERSION,
 };
 
 const emptyOutStats = (): OutStats => ({
@@ -283,8 +289,13 @@ export function loadSettings(): Settings {
   const o = isObj(v) ? v : {};
   const th = isObj(o.thresholds) ? o.thresholds : {};
   const clamp = (x: number) => Math.min(0.95, Math.max(0.05, x));
+  // 古い版は起動のたびに「ランクに合わせる（auto）」を保存していたので、
+  // 自分で選んだのか区別できない。古い設定の auto は、一度だけ新しい最初の値（等速）にする
+  const old = num(o.version, 1) < SETTINGS_VERSION;
+  const speed: Settings['speed'] =
+    o.speed === 'slow' || o.speed === 'normal' ? o.speed : o.speed === 'auto' && !old ? 'auto' : DEFAULT_SETTINGS.speed;
   return {
-    speed: o.speed === 'slow' || o.speed === 'normal' ? o.speed : 'auto',
+    speed,
     sound: bool(o.sound, DEFAULT_SETTINGS.sound),
     voice: bool(o.voice, DEFAULT_SETTINGS.voice),
     vibrate: bool(o.vibrate, DEFAULT_SETTINGS.vibrate),
@@ -294,6 +305,7 @@ export function loadSettings(): Settings {
       2: clamp(num(th[2], EVAL.thresholds[2])),
     },
     situational: bool(o.situational, false),
+    version: SETTINGS_VERSION,
   };
 }
 

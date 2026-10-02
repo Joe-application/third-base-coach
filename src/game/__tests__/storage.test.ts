@@ -46,10 +46,25 @@ describe('storage', () => {
     expect(p.stats.byOuts[2].plays).toBe(0);
   });
 
+  it('速さの最初の値は等速', () => {
+    expect(loadSettings().speed).toBe('normal');
+  });
+
+  it('古い版で保存された「ランクに合わせる」は一度だけ等速に、自分で選んだスローはそのまま', () => {
+    localStorage.setItem(KEYS.settings, JSON.stringify({ speed: 'auto', sound: false }));
+    expect(loadSettings().speed).toBe('normal');
+    expect(loadSettings().sound).toBe(false);
+    localStorage.setItem(KEYS.settings, JSON.stringify({ speed: 'slow' }));
+    expect(loadSettings().speed).toBe('slow');
+    // 新しい版で「ランクに合わせる」を選んだ人は、そのまま
+    localStorage.setItem(KEYS.settings, JSON.stringify({ speed: 'auto', version: 2 }));
+    expect(loadSettings().speed).toBe('auto');
+  });
+
   it('型の違う値は無視して初期値にする', () => {
     localStorage.setItem(KEYS.settings, JSON.stringify({ speed: 'warp', sound: 'yes', thresholds: { 0: 'a', 2: 0.3 } }));
     const s = loadSettings();
-    expect(s.speed).toBe('auto');
+    expect(s.speed).toBe('normal');
     expect(s.sound).toBe(true);
     expect(s.thresholds[0]).toBe(0.75);
     expect(s.thresholds[2]).toBe(0.3);
