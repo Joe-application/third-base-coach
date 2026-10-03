@@ -374,7 +374,7 @@ export function PlayScreen() {
           {r.slideCalled && signal === 'send' && phase !== 'done' && <div className="slide-note">⬇ スライディング！</div>}
           {(flash || lateText) && <div className="judge-flash">{flash ?? lateText}</div>}
           {canSkip && (
-            // 三塁コーチャーの左下の空いているところ（三塁側のファウルゾーン）
+            // グラウンドの右下（一塁側のファウルゾーン）
             <button
               className="skip-btn"
               onPointerDown={(e) => {

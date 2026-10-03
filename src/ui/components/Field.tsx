@@ -172,7 +172,7 @@ function SpeedLabel({ p, speed }: { p: Vec; speed: RunnerSpeed | 'hidden' }) {
 }
 
 /**
- * スコアボード：グラウンドの右下（一塁側のファウルゾーン）。
+ * スコアボード：グラウンドの左下（三塁側のファウルゾーン）。
  * 上に試合の状況（何回・点差・次の打者）、いちばん下にアウトカウント
  */
 function Scoreboard({ outs, lines }: { outs: OutCount; lines: string[] }) {
@@ -180,8 +180,8 @@ function Scoreboard({ outs, lines }: { outs: OutCount; lines: string[] }) {
   const w = Math.max(15, ...lines.map((l) => l.length * 2.75 + 3));
   const h = 6.4 + lines.length * lh;
   return (
-    // 右下の角（一塁側ファウルゾーンの下）に寄せる：一塁ランナー・一塁手・打者走者と重ならないように
-    <g transform={`translate(${FULL_VIEW.x1 - 1.5 - w / 2},${-FULL_VIEW.y0 - 1.5 - 3.2})`} aria-label={`${lines.join('、')} ${outs}アウト`}>
+    // 左下の角（三塁側ファウルゾーンの下、三塁コーチャーの左下）に寄せる：走者や野手と重ならないように
+    <g transform={`translate(${FULL_VIEW.x0 + 1.5 + w / 2},${-FULL_VIEW.y0 - 1.5 - 3.2})`} aria-label={`${lines.join('、')} ${outs}アウト`}>
       <rect x={-w / 2} y={3.2 - h} width={w} height={h} rx={3} fill="#0f172a" opacity={0.85} />
       {lines.map((l, i) => (
         <text key={i} x={0} y={3.2 - h + 3.6 + i * lh} textAnchor="middle" fontSize={2.6} fontWeight={800} fill="#fde68a">

@@ -545,11 +545,11 @@ input[type='checkbox'] {
     opacity: 1;
   }
 }
-/* スキップ：グラウンドの左下（三塁コーチャーの左下、三塁側のファウルゾーン）。
+/* スキップ：グラウンドの右下（一塁側のファウルゾーン）。
    判断が全部終わってから出るので、判断中だけ出る残り時間バーとは同時に出ない */
 .skip-btn {
   position: absolute;
-  left: 8px;
+  right: 8px;
   bottom: 8px;
   z-index: 4;
   background: rgb(15 23 42 / 0.85);
@@ -577,11 +577,11 @@ input[type='checkbox'] {
   pointer-events: none;
   animation: pop2 0.3s ease-out;
 }
-/* 判断できる残り時間（右下のスコアボードと重ならないよう、下の左寄り） */
+/* 判断できる残り時間（左下のスコアボードと重ならないよう、下の右寄り） */
 .timing-bar {
   position: absolute;
-  left: 4%;
-  right: 56%;
+  left: 56%;
+  right: 4%;
   bottom: 8px;
   height: 10px;
   border-radius: 99px;
