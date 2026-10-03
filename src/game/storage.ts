@@ -94,8 +94,6 @@ export type Settings = {
   vibrate: boolean;
   /** 回すべき P_safe の基準（コーチ向け） */
   thresholds: Record<OutCount, number>;
-  /** 点差・イニングの補正 */
-  situational: boolean;
   /** 保存形式のバージョン（古い設定を読み替えるため） */
   version: number;
 };
@@ -109,7 +107,6 @@ export const DEFAULT_SETTINGS: Settings = {
   voice: true,
   vibrate: true,
   thresholds: { ...EVAL.thresholds },
-  situational: false,
   version: SETTINGS_VERSION,
 };
 
@@ -304,7 +301,6 @@ export function loadSettings(): Settings {
       1: clamp(num(th[1], EVAL.thresholds[1])),
       2: clamp(num(th[2], EVAL.thresholds[2])),
     },
-    situational: bool(o.situational, false),
     version: SETTINGS_VERSION,
   };
 }

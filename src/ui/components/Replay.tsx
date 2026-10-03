@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { frameAt, type PlayTimeline } from '../../sim/play';
 import { Field } from './Field';
+import { situationBoard } from '../../game/messages';
 import { callAt, signalAt, trailAt } from '../playback';
 
 /** 計算済みのプレーを再生する（リプレイ・もしも再生） */
@@ -54,6 +55,7 @@ export function Replay({ tl, title, onClose }: { tl: PlayTimeline; title: React.
         call={callAt(tl, t)}
         arms={tl.scenario.outfieldArm}
         outs={tl.scenario.outs}
+        situation={situationBoard(tl.scenario)}
         speeds={{ runner: tl.scenario.runnerSpeed, batter: tl.scenario.batterSpeed ?? 'normal' }}
         className="replay-field"
       />

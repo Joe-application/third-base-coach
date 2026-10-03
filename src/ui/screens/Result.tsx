@@ -1,3 +1,4 @@
+import { thresholdBreakdown } from '../../sim/evaluate';
 import { useMemo, useState } from 'react';
 import { simulatePlay } from '../../sim/play';
 import type { Command } from '../../sim/types';
@@ -44,7 +45,8 @@ export function ResultScreen() {
   const mood = managerMood(score);
   const noSignal = !tl.runner.accepted.some((c) => c.kind !== 'slide');
   const comment = managerComment(mood, score.timing, tl, tl.scenario.seed);
-  const items = checklist(tl, score.threshold, score.timing);
+  const br = thresholdBreakdown(tl.scenario, { thresholds: state.settings.thresholds });
+  const items = checklist(tl, br, score.timing);
   const bs = score.batter;
   const bItems = bs ? batterChecklist(tl, bs.threshold, bs.timing) : [];
   const isLast = session.index + 1 >= session.items.length;
@@ -175,7 +177,7 @@ export function ResultScreen() {
         </section>
 
         <section className="result-detail">
-          <SafeMeter pSafe={score.pSafe} threshold={score.threshold} outs={tl.scenario.outs} />
+          <SafeMeter pSafe={score.pSafe} threshold={score.threshold} outs={tl.scenario.outs} adjusted={br.adjustments.length > 0} />
 
           <div className="row wrap">
             <button onClick={() => setView(view === 'replay' ? 'none' : 'replay')}>🎬 リプレイ</button>

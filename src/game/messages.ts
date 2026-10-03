@@ -1,7 +1,7 @@
 // 子ども向けの文言はすべてここに集める。保護者・コーチが直しやすいように。
 // ふりがなは {漢字|よみ} と書くと <ruby> で表示される。
 
-import type { Grade, Timing, Verdict } from '../sim/evaluate';
+import { thresholdBreakdown, type Grade, type ThresholdAdjustment, type ThresholdBreakdown, type Timing, type Verdict } from '../sim/evaluate';
 import type { PlayTimeline } from '../sim/play';
 import { ARM } from '../sim/constants';
 import type { Arm, BallType, BatterResult, CatchType, OutCount, OutfielderId, PlayResult, RunnerSpeed, Scenario, Strength } from '../sim/types';
@@ -186,7 +186,7 @@ export const OUTS_ADVICE: Record<OutCount, string> = {
 export type ChecklistItem = { label: string; text: string; tone: 'go' | 'stop' | 'neutral' };
 
 /** 判断ポイントの解説（§9.5） */
-export function checklist(tl: PlayTimeline, threshold: number, timing: Timing): ChecklistItem[] {
+export function checklist(tl: PlayTimeline, br: ThresholdBreakdown, timing: Timing): ChecklistItem[] {
   const sc = tl.scenario;
   const f = tl.fielding;
   const th = tl.throwPlan;
@@ -194,9 +194,17 @@ export function checklist(tl: PlayTimeline, threshold: number, timing: Timing): 
   const items: ChecklistItem[] = [];
   items.push({
     label: 'アウトカウント',
-    text: `${OUTS_ADVICE[sc.outs]}。{基準|きじゅん}は ${pct(threshold)}`,
+    text: `${OUTS_ADVICE[sc.outs]}。{基準|きじゅん}は ${pct(br.base)}`,
     tone: sc.outs === 2 ? 'go' : sc.outs === 0 ? 'stop' : 'neutral',
   });
+  if (br.adjustments.length) {
+    const sum = br.value - br.base;
+    items.push({
+      label: '{試合|しあい}の{状況|じょうきょう}',
+      text: `${situationLine(sc) ?? ''}。${br.adjustments.map((a) => adjustmentText(a, sc)).join('／')} → この{場面|ばめん}の{基準|きじゅん}は ${pct(br.value)}`,
+      tone: sum < 0 ? 'go' : sum > 0 ? 'stop' : 'neutral',
+    });
+  }
   items.push({ label: '{打球|だきゅう}', text: describeBall(sc, tl), tone: 'neutral' });
   const speedWord = { forward: '{送球|そうきゅう}が{早|はや}い', side: '{送球|そうきゅう}まで{少|すこ}し{時間|じかん}がかかる', back: '{送球|そうきゅう}まで{時間|じかん}がかかる' }[f.catchType];
   let fText = `${LABEL.fielder[f.fielder]}は${LABEL.catchType[f.catchType]}{捕球|ほきゅう} → ${speedWord}`;
@@ -223,6 +231,7 @@ export const HINT = {
   points: (sc: Scenario) => {
     const list = [
       ['0アウト→{慎重|しんちょう}に', '1アウト→ふつう', '2アウト→{積極的|せっきょくてき}に'][sc.outs],
+      ...thresholdBreakdown(sc).adjustments.map((a) => adjustmentShort(a, sc)),
       '{外野手|がいやしゅ}は{前|まえ}？{横|よこ}？{後|うし}ろ？',
     ];
     return list;
@@ -242,6 +251,79 @@ export const HINT = {
     return list;
   },
 };
+
+// ---- 試合の状況（何回・点差・次の打者） ----
+
+export const SITUATION = {
+  inning: (n: number, half?: 'top' | 'bottom') => `${n}{回|かい}${half === 'bottom' ? 'ウラ' : half === 'top' ? 'オモテ' : ''}`,
+  score: (d: number) => (d === 0 ? '{同点|どうてん}' : d > 0 ? `${d}{点|てん}リード` : `${-d}{点|てん}{負|ま}け`),
+  next: (n: number) => `{次|つぎ}は${n}{番|ばん}`,
+  /** SVG（グラウンド上）ではふりがなを付けられないので、かんたんな漢字だけ */
+  plainInning: (n: number, half?: 'top' | 'bottom') => `${n}回${half === 'bottom' ? 'ウラ' : half === 'top' ? 'オモテ' : ''}`,
+  plainScore: (d: number) => (d === 0 ? '同点' : d > 0 ? `${d}点リード` : `${-d}点負け`),
+  plainNext: (n: number) => `次は${n}番`,
+};
+
+/** グラウンドのスコアボードに出す行（SVG なのでふりがななし） */
+export function situationBoard(sc: Scenario): string[] {
+  const lines: string[] = [];
+  if (sc.inning !== undefined) {
+    let l = SITUATION.plainInning(sc.inning, sc.half);
+    if (sc.scoreDiff !== undefined) l += ` ${SITUATION.plainScore(sc.scoreDiff)}`;
+    lines.push(l);
+  } else if (sc.scoreDiff !== undefined) lines.push(SITUATION.plainScore(sc.scoreDiff));
+  if (sc.nextBatter !== undefined) lines.push(SITUATION.plainNext(sc.nextBatter));
+  return lines;
+}
+
+/** 試合の状況の1行（例：6{回|かい}ウラ・1{点|てん}{負|ま}け・{次|つぎ}は4{番|ばん}） */
+export function situationLine(sc: Scenario): string | null {
+  const parts: string[] = [];
+  if (sc.inning !== undefined) parts.push(SITUATION.inning(sc.inning, sc.half));
+  if (sc.scoreDiff !== undefined) parts.push(SITUATION.score(sc.scoreDiff));
+  if (sc.nextBatter !== undefined) parts.push(SITUATION.next(sc.nextBatter));
+  return parts.length ? parts.join('・') : null;
+}
+
+const signedPct = (x: number) => `${x > 0 ? '+' : '−'}${Math.round(Math.abs(x) * 100)}%`;
+
+/** 基準が変わった理由（結果画面の解説） */
+export function adjustmentText(a: ThresholdAdjustment, sc: Scenario): string {
+  const d = sc.scoreDiff ?? 0;
+  const tail = `（{基準|きじゅん} ${signedPct(a.delta)}）`;
+  switch (a.kind) {
+    case 'clutchBottom':
+      return (d === 0
+        ? '6{回|かい}ウラ・{同点|どうてん} → {帰|かえ}ればサヨナラ！ ギャンブルしてもいい'
+        : '6{回|かい}ウラ・1{点|てん}{負|ま}け → {帰|かえ}れば{同点|どうてん}！ ギャンブルしてもいい') + tail;
+    case 'clutchTop':
+      return `6{回|かい}オモテ・${SITUATION.score(d)} → この1{点|てん}がとても{大|おお}きい${tail}`;
+    case 'bigDeficit':
+      return `${-d}{点|てん}{負|ま}け → ランナーをためたい。{本塁|ほんるい}でアウトはもったいない（{無理|むり}しない）${tail}`;
+    case 'bigLead':
+      return `${d}{点|てん}リード → {無理|むり}しなくていい${tail}`;
+    case 'nextBatter':
+      return a.delta > 0
+        ? `${SITUATION.next(sc.nextBatter ?? 0)} → {打|う}ってくれる{確率|かくりつ}が{高|たか}い。{任|まか}せよう（{無理|むり}しない）${tail}`
+        : `${SITUATION.next(sc.nextBatter ?? 0)} → ヒットが{出|で}にくい。ここで{点|てん}を{取|と}りにいく${tail}`;
+  }
+}
+
+/** ヒント用の短い文 */
+export function adjustmentShort(a: ThresholdAdjustment, sc: Scenario): string {
+  switch (a.kind) {
+    case 'clutchBottom':
+      return '6{回|かい}ウラの{接戦|せっせん}→ギャンブルOK';
+    case 'clutchTop':
+      return '6{回|かい}の{接戦|せっせん}→1{点|てん}が{大事|だいじ}';
+    case 'bigDeficit':
+      return '{大差|たいさ}で{負|ま}け→{無理|むり}しない';
+    case 'bigLead':
+      return '{大差|たいさ}でリード→{無理|むり}しない';
+    case 'nextBatter':
+      return a.delta > 0 ? `${SITUATION.next(sc.nextBatter ?? 0)}→{任|まか}せる` : `${SITUATION.next(sc.nextBatter ?? 0)}→{取|と}りにいく`;
+  }
+}
 
 export const INTRO = {
   tapToStart: 'タップでスタート',

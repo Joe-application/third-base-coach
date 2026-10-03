@@ -1147,3 +1147,9 @@ details summary {
   font-size: 0.7rem;
   color: var(--muted);
 }
+
+/* スタート前のカード：試合の状況（何回・点差・次の打者） */
+.intro-situation {
+  font-weight: 800;
+  color: #b45309;
+}

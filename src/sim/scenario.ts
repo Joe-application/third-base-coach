@@ -1,6 +1,6 @@
 // シナリオのプリセットとランダム生成（§7）
 
-import { baselinePSafe, thresholdFor } from './evaluate';
+import { baselinePSafe, gradeDecision, thresholdBreakdown, thresholdFor } from './evaluate';
 import { dirFromAngle, fenceDistance } from './field';
 import { drawsFromSeed } from './draws';
 import { simulatePlay } from './play';
@@ -116,7 +116,24 @@ export type GenerateOptions = {
   direction?: Direction;
   /** ランナー一塁（長打で一塁走者を三塁で止めるか、本塁へ回すか） */
   runnerOnFirst?: boolean;
+  /** 試合の状況を決めて出す（省略時はランダム）。null なら状況なし */
+  situation?: Situation | null;
 };
+
+/** 試合の状況：何回・オモテ／ウラ・点差（自チーム − 相手）・次の打者 */
+export type Situation = Pick<Scenario, 'inning' | 'half' | 'scoreDiff' | 'nextBatter'>;
+
+/** 点差はよくある接戦を多めに */
+const SCORE_DIFFS = [0, 0, 0, 1, -1, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6];
+
+export function randomSituation(rng: Rng): Situation {
+  return {
+    inning: rng.int(1, 6),
+    half: rng.pick(['top', 'bottom'] as const),
+    scoreDiff: rng.pick(SCORE_DIFFS),
+    nextBatter: rng.int(1, 9),
+  };
+}
 
 const ARMS: Arm[] = ['weak', 'normal', 'normal', 'strong'];
 
@@ -182,6 +199,8 @@ export function randomScenario(rng: Rng, opts: GenerateOptions = {}): Scenario {
     seed: (rng.next() * 4294967296) >>> 0,
   };
   sc.batterSpeed = rng.pick(['slow', 'normal', 'normal', 'fast'] as const);
+  const sit = opts.situation === undefined ? randomSituation(rng) : opts.situation;
+  if (sit) Object.assign(sc, sit);
   return sc;
 }
 
@@ -219,13 +238,17 @@ export type Want = {
   longHit?: boolean;
   direction?: Direction;
   runnerOnFirst?: boolean;
+  situation?: Situation | null;
+  /** 試合の状況で答えがひっくり返る問題にする（ふだんなら回すが、状況のせいで止める、など） */
+  flip?: boolean;
 };
 
 /** 条件に合う問題を1つ作る（P_safe を見て選別） */
 export function generateRated(seed: number, difficulty: Difficulty, want: Want = {}, mcRuns = 200): RatedScenario {
   const rng = createRng(seed);
   let fallback: RatedScenario | null = null;
-  for (let i = 0; i < 80; i++) {
+  let flipFallback: RatedScenario | null = null;
+  for (let i = 0; i < (want.flip ? 160 : 80); i++) {
     const sc = randomScenario(rng, want);
     if (want.longHit && !hasBatterDecision(sc)) continue;
     // 単打の練習は、外野の間を抜けない打球だけ
@@ -233,15 +256,25 @@ export function generateRated(seed: number, difficulty: Difficulty, want: Want =
     // 一塁走者は、三塁まで来る長打だけ
     if (want.runnerOnFirst && !isLongHit(sc)) continue;
     const pSafe = baselinePSafe(sc, mcRuns, hashSeed(seed, i));
-    const threshold = thresholdFor(sc);
+    const br = thresholdBreakdown(sc);
+    const threshold = br.value;
     const gap = pSafe - threshold;
     const answer = gap >= 0 ? 'send' : 'stop';
     const rated = { scenario: sc, pSafe, threshold, answer } as RatedScenario;
+    if (want.flip) {
+      // アウトカウントだけの基準と、状況で変わった基準とで、答えが逆になるか
+      if (pSafe >= br.base === pSafe >= br.value) continue;
+      // さらに、逆を選んだら × になる打球を優先する（どちらを選んでも ○ だと練習にならない）
+      const wrong = answer === 'send' ? 'stop' : 'send';
+      if (gradeDecision(wrong, pSafe, threshold).grade === 'bad') return rated;
+      flipFallback ??= rated;
+      continue;
+    }
     if (want.answer && want.answer !== answer) continue;
     fallback ??= rated;
     if (acceptsGap(difficulty, gap)) return rated;
   }
-  return fallback ?? rateScenario(randomScenario(rng, want));
+  return flipFallback ?? fallback ?? rateScenario(randomScenario(rng, want));
 }
 
 export function rateScenario(sc: Scenario, mcRuns = 400): RatedScenario {
@@ -269,13 +302,29 @@ export function generateChallenge(seed: number, difficulty: Difficulty, count = 
     [plan[i], plan[j]] = [plan[j], plan[i]];
   }
   const outsStart = rng.int(0, 2);
-  return plan.map((p, i) =>
-    generateRated(hashSeed(seed, i, 77), difficulty, { ...p, outs: ((outsStart + i) % 3) as OutCount, variety }),
-  );
+  const items = plan.map((p, i) => ({ ...p, outs: ((outsStart + i) % 3) as OutCount, variety }));
+  // 単打の2問には、決まった試合の状況を入れる：
+  // 6回ウラの接戦・2アウト（ギャンブルの練習）と、大差で負けている場面（無理しない練習）
+  const singles = items.filter((p) => p.direction);
+  // どちらも「試合の状況で答えがひっくり返る」打球を選ぶ。次の打者は補正のない 1・2・6・7番にして、状況の意味がはっきりわかるように
+  const plainBatter = () => rng.pick([1, 2, 6, 7]);
+  if (singles[0]) {
+    singles[0].outs = 2;
+    singles[0].situation = { inning: 6, half: 'bottom', scoreDiff: rng.pick([0, -1]), nextBatter: plainBatter() };
+    singles[0].flip = true;
+    delete singles[0].answer;
+  }
+  if (singles[1]) {
+    singles[1].situation = { inning: rng.int(3, 6), half: rng.pick(['top', 'bottom'] as const), scoreDiff: rng.pick([-5, -6]), nextBatter: plainBatter() };
+    singles[1].flip = true;
+    delete singles[1].answer;
+  }
+  return items.map((p, i) => generateRated(hashSeed(seed, i, 77), difficulty, p));
 }
 
 /** アウトカウント比較：同じ打球を 0/1/2 アウトで */
 export function withOuts(sc: Scenario, outs: OutCount): Scenario {
-  return { ...sc, id: `${sc.id}-o${outs}`, outs };
+  // アウトカウントだけで答えが変わることを体感するモードなので、試合の状況は付けない
+  return { ...sc, id: `${sc.id}-o${outs}`, outs, inning: undefined, half: undefined, scoreDiff: undefined, nextBatter: undefined };
 }
 

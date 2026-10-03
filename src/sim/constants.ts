@@ -227,6 +227,30 @@ export const EVAL = {
   bestTimingWindow: 0.5,
   timingBonus: 20,
   hesitatePenalty: -30,
+  /**
+   * 試合の状況による基準の補正（＋ = 慎重に、− = 積極的に）。
+   * 学童は6回まで。最終回の同点・1点負けはギャンブル、大差で負けていれば無理しない、
+   * 次がクリーンアップなら任せる、下位打線なら取りにいく
+   */
+  situation: {
+    lastInning: 6,
+    /** 最終回ウラ・同点か1点負け（サヨナラ・同点のチャンス） */
+    clutchBottom: { twoOut: -0.15, other: -0.07 },
+    /** 最終回オモテ・同点か1点負け */
+    clutchTop: { twoOut: -0.08, other: -0.04 },
+    /** この点数以上負けていたら無理しない */
+    bigDeficitMin: 3,
+    bigDeficit: 0.15,
+    /** この点数以上リードしていたら無理しない */
+    bigLeadMin: 5,
+    bigLead: 0.1,
+    /** 次の打者の打順ごとの補正（2アウトのときの値） */
+    nextBatter: { 3: 0.07, 4: 0.1, 5: 0.07, 8: -0.05, 9: -0.06 } as Record<number, number>,
+    /** 次の打者の補正にかける倍率（あとに打者が続くほど、次の1人の重みは小さい） */
+    nextBatterOutsScale: { 0: 0.5, 1: 0.75, 2: 1 } as Record<OutCount, number>,
+    min: 0.15,
+    max: 0.9,
+  },
   safeBonus: 20,
   slideBonus: 10,
   /** 打者走者（二塁を回るか）の判断。1プレーの中の2つ目の判断なので、点は半分くらい */

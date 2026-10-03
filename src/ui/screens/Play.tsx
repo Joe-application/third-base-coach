@@ -6,7 +6,7 @@ import { G_B_SECOND, leadGeom } from '../../sim/field';
 import { frameAt, simulatePlay } from '../../sim/play';
 import { runnerGAt } from '../../sim/runner';
 import type { Command, CommandKind } from '../../sim/types';
-import { ANOHI_STORY, BUTTONS, HINT, INTRO, LABEL, VOICE } from '../../game/messages';
+import { ANOHI_STORY, BUTTONS, HINT, INTRO, LABEL, situationBoard, situationLine, VOICE } from '../../game/messages';
 import { applyPlay, comboMultiplier, isPlayGreat } from '../../game/progression';
 import { appendHistory } from '../../game/storage';
 import { sfx, unlockAudio, vibrate } from '../audio';
@@ -155,7 +155,6 @@ export function PlayScreen() {
       const final = tlRef.current;
       const score = scorePlay(final, draws, {
         thresholds: state.settings.thresholds,
-        situational: state.settings.situational,
       });
       const great = isPlayGreat(score);
       const combo = great ? session.combo + 1 : 0;
@@ -364,6 +363,7 @@ export function PlayScreen() {
             batterPulse={bInWindow}
             call={callAt(tl, t)}
             outs={sc.outs}
+            situation={situationBoard(sc)}
             arms={hideTraits ? 'hidden' : sc.outfieldArm}
             speeds={hideTraits ? 'hidden' : { runner: sc.runnerSpeed, batter: sc.batterSpeed ?? 'normal' }}
           />
@@ -417,20 +417,14 @@ export function PlayScreen() {
               <strong>{LABEL.outs(sc.outs)}</strong>
               <span>
                 <R>{INTRO.runnerOn(sc)}</R>
-                {sc.inning !== undefined && (
-                  <>
-                    {' ・ '}
-                    <R>{INTRO.inning(sc.inning)}</R>
-                  </>
-                )}
-                {sc.scoreDiff !== undefined && (
-                  <>
-                    {' ・ '}
-                    <R>{INTRO.score(sc.scoreDiff)}</R>
-                  </>
-                )}
+
               </span>
             </div>
+            {situationLine(sc) && (
+              <div className="intro-situation">
+                <R>{situationLine(sc)!}</R>
+              </div>
+            )}
             <div className="muted small-text">
               <R>
                 {hideTraits

@@ -80,7 +80,7 @@ export function SettingsScreen() {
           <R>{'{詳細|しょうさい}{設定|せってい}（コーチ{向|む}け）'}</R>
         </summary>
         <p className="muted small-text">
-          「回すべきセーフ確率の基準」。止めた場合に、そのあとの打者でこの走者が生還する確率の目安です。チームの方針に合わせて変えられます。
+          「回すべきセーフ確率の基準」。止めた場合に、そのあとの打者でこの走者が生還する確率の目安です。チームの方針に合わせて変えられます。試合の状況（6回の同点・1点負け、大差、次の打者）による補正は、この値に足し引きされます。
         </p>
         <div className="form-grid">
           {([0, 1, 2] as OutCount[]).map((o) => (
@@ -99,13 +99,8 @@ export function SettingsScreen() {
               </div>
             </FragmentRow>
           ))}
-          <label>点差・イニング補正</label>
-          <label className="check">
-            <input type="checkbox" checked={s.situational} onChange={(e) => set({ situational: e.target.checked })} />
-            最終回で同点・1点負けの2アウトは −5%、5点差以上リードは +10%
-          </label>
         </div>
-        <button className="small" onClick={() => set({ thresholds: { ...EVAL.thresholds }, situational: false })}>
+        <button className="small" onClick={() => set({ thresholds: { ...EVAL.thresholds } })}>
           初期値に戻す
         </button>
       </details>

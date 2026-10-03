@@ -171,11 +171,22 @@ function SpeedLabel({ p, speed }: { p: Vec; speed: RunnerSpeed | 'hidden' }) {
   );
 }
 
-/** アウトカウント：一塁コーチャーズボックスのあたり（三塁コーチャーから見て左右対称の位置） */
-function OutsBoard({ outs }: { outs: OutCount }) {
+/**
+ * スコアボード：一塁コーチャーズボックスのあたり（三塁コーチャーから見て左右対称の位置）。
+ * 上に試合の状況（何回・点差・次の打者）、いちばん下にアウトカウント
+ */
+function Scoreboard({ outs, lines }: { outs: OutCount; lines: string[] }) {
+  const lh = 3.8;
+  const w = Math.max(15, ...lines.map((l) => l.length * 2.75 + 3));
+  const h = 6.4 + lines.length * lh;
   return (
-    <g transform={`translate(${-COACH_POSITION.x},${-COACH_POSITION.y + 1})`} aria-label={`${outs}アウト`}>
-      <rect x={-7.5} y={-3.2} width={15} height={6.4} rx={3.2} fill="#0f172a" opacity={0.85} />
+    <g transform={`translate(${-COACH_POSITION.x},${-COACH_POSITION.y + 1})`} aria-label={`${lines.join('、')} ${outs}アウト`}>
+      <rect x={-w / 2} y={3.2 - h} width={w} height={h} rx={3} fill="#0f172a" opacity={0.85} />
+      {lines.map((l, i) => (
+        <text key={i} x={0} y={3.2 - h + 3.6 + i * lh} textAnchor="middle" fontSize={2.6} fontWeight={800} fill="#fde68a">
+          {l}
+        </text>
+      ))}
       <text x={-3.6} y={1.05} textAnchor="middle" fontSize={2.9} fontWeight={900} fill="#fff">
         OUT
       </text>
@@ -197,6 +208,8 @@ function OutsBoard({ outs }: { outs: OutCount }) {
 export type FieldProps = {
   /** アウトカウント（グラウンドの一塁側に表示） */
   outs?: OutCount;
+  /** スコアボードに出す試合の状況（例：6回ウラ、1点負け、次は4番） */
+  situation?: string[];
   frame: Frame;
   /** 外野手の肩（'hidden' なら「？」） */
   arms?: Record<OutfielderId, Arm> | 'hidden';
@@ -216,7 +229,7 @@ export type FieldProps = {
 
 export const FULL_VIEW = { x0: -54, x1: 54, y0: -9, y1: 82 };
 
-export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, speeds, outs, batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
+export function Field({ frame, trail, coach = null, pulse = false, call = null, arms, speeds, outs, situation = [], batterPulse = false, view = FULL_VIEW, className }: FieldProps) {
   const f = frame.fielders;
   const ball = frame.ball;
   const lift = ball.h * 0.45;
@@ -230,7 +243,7 @@ export function Field({ frame, trail, coach = null, pulse = false, call = null, 
         aria-label="グラウンド"
       >
         <Ground />
-        {outs !== undefined && <OutsBoard outs={outs} />}
+        {outs !== undefined && <Scoreboard outs={outs} lines={situation} />}
         {trail && trail.length > 1 && (
           <polyline
             points={trail.map(P).join(' ')}

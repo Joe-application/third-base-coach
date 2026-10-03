@@ -16,9 +16,14 @@ export type Scenario = {
   outs: OutCount;
   /** MVP は second のみ true */
   runners: { first: boolean; second: boolean; third: boolean };
+  /** 何回か（学童は6回まで） */
   inning?: number;
+  /** オモテ／ウラ */
+  half?: 'top' | 'bottom';
   /** 自チーム − 相手 */
   scoreDiff?: number;
+  /** 次の打者の打順（1〜9） */
+  nextBatter?: number;
   battedBall: {
     type: BallType;
     /** 0=センター、負=レフト側 */

@@ -14,7 +14,7 @@ import { G_HOME, G_THIRD, leadGeom } from '../field';
 import { outProbability, simulatePlay } from '../play';
 import { createRng, hashSeed } from '../rng';
 import { simulateRunner, simulateRunnerSpec } from '../runner';
-import { generateChallenge, isLongHit, PRESETS, randomScenario } from '../scenario';
+import { generateChallenge, isLongHit, PRESETS, randomScenario, withOuts } from '../scenario';
 import { planThrow } from '../throw';
 import type { Scenario } from '../types';
 
@@ -164,8 +164,26 @@ describe('評価', () => {
   it('基準値', () => {
     expect(thresholdFor(anohi)).toBe(0.4);
     expect(thresholdFor(PRESETS.anohi0)).toBe(0.75);
-    expect(thresholdFor({ ...anohi, scoreDiff: 6 }, { situational: true })).toBeCloseTo(0.5);
-    expect(thresholdFor({ ...anohi, scoreDiff: 0, inning: 6 }, { situational: true })).toBeCloseTo(0.35);
+  });
+
+  it('試合の状況で基準が変わる', () => {
+    // 6回ウラ・1点負け・2アウト：ギャンブル
+    expect(thresholdFor({ ...anohi, inning: 6, half: 'bottom', scoreDiff: -1 })).toBeCloseTo(0.25);
+    // 6回オモテ・同点・2アウト
+    expect(thresholdFor({ ...anohi, inning: 6, half: 'top', scoreDiff: 0 })).toBeCloseTo(0.32);
+    // 5点負け：無理しない
+    expect(thresholdFor({ ...anohi, inning: 3, half: 'top', scoreDiff: -5 })).toBeCloseTo(0.55);
+    // 5点リード：無理しない
+    expect(thresholdFor({ ...anohi, scoreDiff: 5 })).toBeCloseTo(0.5);
+    // 次が4番：任せる。0アウトなら影響は半分
+    expect(thresholdFor({ ...anohi, nextBatter: 4 })).toBeCloseTo(0.5);
+    expect(thresholdFor({ ...PRESETS.anohi0, nextBatter: 4 })).toBeCloseTo(0.8);
+    // 次が9番：取りにいく
+    expect(thresholdFor({ ...anohi, nextBatter: 9 })).toBeCloseTo(0.34);
+    // 1番・2番・中盤の同点は補正なし
+    expect(thresholdFor({ ...anohi, inning: 3, half: 'bottom', scoreDiff: 0, nextBatter: 1 })).toBeCloseTo(0.4);
+    // 重なることもある：6回ウラ・1点負け・2アウト・次は9番
+    expect(thresholdFor({ ...anohi, inning: 6, half: 'bottom', scoreDiff: -1, nextBatter: 9 })).toBeCloseTo(0.19);
   });
 
   it('採点表（§5.3）', () => {
@@ -281,6 +299,27 @@ describe('シナリオ生成', () => {
     const i = tl.runner.g.findIndex((g) => g >= geom.gThird - 23);
     const p = geom.pos(tl.runner.g[i], 0);
     expect(Math.hypot(p.x - 0, p.y - 32.53)).toBeLessThan(2);
+  });
+
+  it('チャレンジ10問には試合の状況が付き、6回ウラの接戦・2アウトと大差の負けが必ず入る', () => {
+    for (const seed of [11, 22, 33]) {
+      const set = generateChallenge(seed, 'easy');
+      expect(set.every((r) => r.scenario.inning !== undefined && r.scenario.nextBatter !== undefined)).toBe(true);
+      expect(set.every((r) => r.scenario.inning! >= 1 && r.scenario.inning! <= 6)).toBe(true);
+      const clutch = set.filter(
+        (r) => r.scenario.inning === 6 && r.scenario.half === 'bottom' && r.scenario.outs === 2 && [0, -1].includes(r.scenario.scoreDiff!),
+      );
+      expect(clutch.length).toBeGreaterThanOrEqual(1);
+      expect(set.some((r) => r.scenario.scoreDiff! <= -5)).toBe(true);
+      // 正解の判定には、試合の状況で変わった基準を使っている
+      for (const r of set) expect(r.threshold).toBeCloseTo(thresholdFor(r.scenario));
+    }
+  });
+
+  it('アウトカウント比較には試合の状況を付けない', () => {
+    const sc = withOuts({ ...anohi, inning: 6, half: 'bottom', scoreDiff: -1, nextBatter: 4 }, 0);
+    expect(sc.inning).toBeUndefined();
+    expect(thresholdFor(sc)).toBe(0.75);
   });
 
   it('チャレンジ10問はアウトカウントと正解がばらける', () => {

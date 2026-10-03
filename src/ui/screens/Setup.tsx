@@ -26,7 +26,9 @@ type Form = {
   arms: Record<'LF' | 'CF' | 'RF', Arm>;
   depth: Depth;
   inning: number;
+  half: 'top' | 'bottom';
   scoreDiff: number;
+  nextBatter: number;
   useScore: boolean;
 };
 
@@ -50,7 +52,9 @@ function toScenario(f: Form): Scenario {
   }
   if (f.useScore) {
     sc.inning = f.inning;
+    sc.half = f.half;
     sc.scoreDiff = f.scoreDiff;
+    sc.nextBatter = f.nextBatter;
   }
   return sc;
 }
@@ -69,7 +73,9 @@ function fromScenario(sc: Scenario): Form {
     arms: { ...sc.outfieldArm },
     depth: sc.outfieldDepth,
     inning: sc.inning ?? 6,
+    half: sc.half ?? 'bottom',
     scoreDiff: sc.scoreDiff ?? 0,
+    nextBatter: sc.nextBatter ?? 1,
     useScore: sc.scoreDiff !== undefined,
   };
 }
@@ -106,7 +112,7 @@ export function SetupScreen() {
   const [f, setF] = useState<Form>(() => fromScenario(PRESETS.anohi));
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }));
   const sc = useMemo(() => toScenario(f), [f]);
-  const th = thresholdFor(sc, { thresholds: state.settings.thresholds, situational: state.settings.situational });
+  const th = thresholdFor(sc, { thresholds: state.settings.thresholds });
   const p = useMemo(() => baselinePSafe(sc, 400), [sc]);
 
   return (
@@ -233,7 +239,7 @@ export function SetupScreen() {
         />
 
         <label>
-          <R>{'{点差|てんさ}・イニング'}</R>
+          <R>{'{試合|しあい}の{状況|じょうきょう}'}</R>
         </label>
         <div className="row wrap">
           <label className="check">
@@ -243,16 +249,27 @@ export function SetupScreen() {
           {f.useScore && (
             <>
               <select value={f.inning} onChange={(e) => set('inning', Number(e.target.value))} aria-label="イニング">
-                {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                {[1, 2, 3, 4, 5, 6].map((n) => (
                   <option key={n} value={n}>
                     {n}回
                   </option>
                 ))}
               </select>
+              <select value={f.half} onChange={(e) => set('half', e.target.value as Form['half'])} aria-label="オモテ・ウラ">
+                <option value="top">オモテ</option>
+                <option value="bottom">ウラ</option>
+              </select>
               <select value={f.scoreDiff} onChange={(e) => set('scoreDiff', Number(e.target.value))} aria-label="点差">
-                {[-5, -3, -2, -1, 0, 1, 2, 3, 5, 6].map((n) => (
+                {[-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map((n) => (
                   <option key={n} value={n}>
                     {n === 0 ? '同点' : n > 0 ? `${n}点リード` : `${-n}点負け`}
+                  </option>
+                ))}
+              </select>
+              <select value={f.nextBatter} onChange={(e) => set('nextBatter', Number(e.target.value))} aria-label="次の打者">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <option key={n} value={n}>
+                    次は{n}番
                   </option>
                 ))}
               </select>
@@ -263,11 +280,6 @@ export function SetupScreen() {
 
       <div className="card setup-preview">
         <R>{`コーチ{向|む}け{目安|めやす}：{回|まわ}した{場合|ばあい}のセーフ{確率|かくりつ} 約${Math.round(p * 100)}% ／ {基準|きじゅん} ${Math.round(th * 100)}%`}</R>
-        {!state.settings.situational && f.useScore && (
-          <div className="muted small-text">
-            <R>{'※{点差|てんさ}・イニングの{補正|ほせい}は{設定|せってい}で ON にすると{効|き}きます'}</R>
-          </div>
-        )}
       </div>
 
       <div className="row center-row">

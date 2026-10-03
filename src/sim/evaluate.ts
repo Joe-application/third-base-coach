@@ -12,23 +12,50 @@ export type Thresholds = Record<OutCount, number>;
 
 export type ThresholdOptions = {
   thresholds?: Thresholds;
-  /** 点差・イニングの補正（§5.2 フェーズ2） */
-  situational?: boolean;
-  lastInning?: number;
 };
+
+/** 試合の状況による補正の種類（文言は game/messages.ts） */
+export type SituationKind = 'clutchBottom' | 'clutchTop' | 'bigDeficit' | 'bigLead' | 'nextBatter';
+
+export type ThresholdAdjustment = { kind: SituationKind; delta: number };
+
+export type ThresholdBreakdown = {
+  /** アウトカウントだけで決まる基準 */
+  base: number;
+  adjustments: ThresholdAdjustment[];
+  /** 補正したあとの基準 */
+  value: number;
+};
+
+/** 回すべき P_safe の基準と、その内訳（アウトカウント＋試合の状況） */
+export function thresholdBreakdown(sc: Scenario, opts: ThresholdOptions = {}): ThresholdBreakdown {
+  const S = EVAL.situation;
+  const base = (opts.thresholds ?? EVAL.thresholds)[sc.outs];
+  const adjustments: ThresholdAdjustment[] = [];
+  const d = sc.scoreDiff;
+  if (d !== undefined) {
+    const final = (sc.inning ?? 0) >= S.lastInning;
+    if (final && (d === 0 || d === -1)) {
+      const c = sc.half === 'bottom' ? S.clutchBottom : S.clutchTop;
+      adjustments.push({ kind: sc.half === 'bottom' ? 'clutchBottom' : 'clutchTop', delta: sc.outs === 2 ? c.twoOut : c.other });
+    } else if (d <= -S.bigDeficitMin) {
+      adjustments.push({ kind: 'bigDeficit', delta: S.bigDeficit });
+    } else if (d >= S.bigLeadMin) {
+      adjustments.push({ kind: 'bigLead', delta: S.bigLead });
+    }
+  }
+  if (sc.nextBatter !== undefined) {
+    const v = S.nextBatter[sc.nextBatter];
+    if (v) adjustments.push({ kind: 'nextBatter', delta: v * S.nextBatterOutsScale[sc.outs] });
+  }
+  const sum = adjustments.reduce((a, x) => a + x.delta, 0);
+  const value = Math.min(S.max, Math.max(S.min, base + sum));
+  return { base, adjustments, value };
+}
 
 /** 回すべき P_safe の基準 */
 export function thresholdFor(sc: Scenario, opts: ThresholdOptions = {}): number {
-  const base = (opts.thresholds ?? EVAL.thresholds)[sc.outs];
-  if (!opts.situational) return base;
-  let th = base;
-  const last = opts.lastInning ?? 6;
-  const diff = sc.scoreDiff;
-  if (diff !== undefined) {
-    if (sc.outs === 2 && (sc.inning ?? 0) >= last && (diff === 0 || diff === -1)) th -= 0.05;
-    if (diff >= 5) th += 0.1;
-  }
-  return Math.min(0.95, Math.max(0.05, th));
+  return thresholdBreakdown(sc, opts).value;
 }
 
 /** 判断時刻 tD の時点で確定している事象 */

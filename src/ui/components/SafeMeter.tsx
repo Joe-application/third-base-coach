@@ -7,12 +7,15 @@ export function SafeMeter({
   threshold,
   outs,
   batter = false,
+  adjusted = false,
 }: {
   pSafe: number;
   threshold: number;
   outs: OutCount;
   /** 打者走者（三塁へ行かせるか）用の文言にする */
   batter?: boolean;
+  /** 試合の状況で基準が変わっている */
+  adjusted?: boolean;
 }) {
   const p = Math.round(pSafe * 100);
   const th = Math.round(threshold * 100);
@@ -24,7 +27,7 @@ export function SafeMeter({
         <strong className="meter-num">{p}%</strong>
         <span className="muted">
           {' ／ '}
-          <R>{`${outs}アウトの{基準|きじゅん} ${th}%`}</R>
+          <R>{adjusted ? `この{場面|ばめん}の{基準|きじゅん} ${th}%` : `${outs}アウトの{基準|きじゅん} ${th}%`}</R>
         </span>
         <span className={`pill ${send ? 'go' : 'stop'}`}>
           <R>
