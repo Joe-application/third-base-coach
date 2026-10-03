@@ -202,12 +202,8 @@ export function PlayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  const press = (kind: CommandKind | 'skip') => {
+  const press = (kind: CommandKind) => {
     if (phase === 'intro' || phase === 'done') return;
-    if (kind === 'skip') {
-      skip();
-      return;
-    }
     unlockAudio();
     const cmd: Command = { t: tRef.current, kind };
     const next = simulatePlay(sc, [...cmdsRef.current, cmd], draws);
@@ -294,10 +290,7 @@ export function PlayScreen() {
   const stopBtn = batterMode
     ? { kind: 'bstop' as const, text: BUTTONS.bstop, enabled: canBStop, glow: bInWindow, chosen: bSignal === 'bstop' }
     : { kind: 'stop' as const, text: BUTTONS.stop, enabled: canStop, glow: inWindow, chosen: signal === 'stop' };
-  // もう押せる合図がなければ、右のボタンが「スキップ」になる（下の方にあって押しやすい）
-  const sendBtn = canSkip
-    ? { kind: 'skip' as const, text: BUTTONS.skip, enabled: true, glow: false, chosen: false }
-    : batterMode
+  const sendBtn = batterMode
       ? { kind: 'bsend' as const, text: BUTTONS.bsend, enabled: canBSend, glow: bInWindow, chosen: bSignal === 'bsend' }
       : { kind: 'send' as const, text: BUTTONS.send, enabled: canSend, glow: inWindow, chosen: signal === 'send' };
 
@@ -380,6 +373,18 @@ export function PlayScreen() {
           )}
           {r.slideCalled && signal === 'send' && phase !== 'done' && <div className="slide-note">⬇ スライディング！</div>}
           {(flash || lateText) && <div className="judge-flash">{flash ?? lateText}</div>}
+          {canSkip && (
+            // 三塁コーチャーの左下の空いているところ（三塁側のファウルゾーン）
+            <button
+              className="skip-btn"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                skip();
+              }}
+            >
+              {BUTTONS.skip}
+            </button>
+          )}
           {timingBar !== null && (
             <div className="timing-bar" aria-label="判断できる残り時間">
               <div style={{ width: `${Math.round(timingBar * 100)}%` }} />
@@ -389,14 +394,14 @@ export function PlayScreen() {
         </div>
 
         <button
-          className={`decide send ${sendBtn.glow ? 'glow' : ''} ${sendBtn.chosen ? 'chosen' : ''} ${batterMode && !canSkip ? 'batter' : ''} ${canSkip ? 'skip' : ''}`}
+          className={`decide send ${sendBtn.glow ? 'glow' : ''} ${sendBtn.chosen ? 'chosen' : ''} ${batterMode ? 'batter' : ''}`}
           disabled={!sendBtn.enabled}
           onPointerDown={(e) => {
             e.preventDefault();
             press(sendBtn.kind);
           }}
         >
-          <ButtonLabel text={sendBtn.text} caption={batterMode && !canSkip ? BUTTONS.batterCaption : undefined} />
+          <ButtonLabel text={sendBtn.text} caption={batterMode ? BUTTONS.batterCaption : undefined} />
         </button>
       </div>
     </div>

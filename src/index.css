@@ -545,10 +545,20 @@ input[type='checkbox'] {
     opacity: 1;
   }
 }
-/* スキップ：右の「回れ」ボタンがスキップに変わる */
-.decide.send.skip {
-  background: #334155;
-  border-color: #0f172a;
+/* スキップ：グラウンドの左下（三塁コーチャーの左下、三塁側のファウルゾーン）。
+   判断が全部終わってから出るので、判断中だけ出る残り時間バーとは同時に出ない */
+.skip-btn {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 4;
+  background: rgb(15 23 42 / 0.85);
+  color: #fff;
+  border: 2px solid rgb(255 255 255 / 0.6);
+  border-radius: 16px;
+  min-height: 56px;
+  padding: 8px 22px;
+  font-size: 1.15rem;
 }
 /* はやすぎ・おそいのダメ出し（フィールドの上の方、外野のフェンスのあたり） */
 .judge-flash {
